@@ -304,7 +304,7 @@ function ServerCard({ server, selected, onSelect, isFilterActive, onCardClick })
           <StatusDot status={server.status} />
           {server.cache_age_s != null && (
             <span className={`text-[10px] tabular-nums ${isStale ? "text-amber-500 font-semibold" : "text-slate-300"}`}>
-              {isStale ? "ΓÜá " : ""}polled {Math.round(server.cache_age_s)}s ago
+              {isStale ? "⚠ " : ""}polled {Math.round(server.cache_age_s)}s ago
             </span>
           )}
         </div>
@@ -348,7 +348,7 @@ function ServerCard({ server, selected, onSelect, isFilterActive, onCardClick })
               <button
                 onClick={e => { e.stopPropagation(); setShowDrives(d => !d); }}
                 className="text-blue-500 hover:text-blue-700 ml-1 text-[10px] font-semibold">
-                {showDrives ? "Γû▓ hide" : `Γû╝ ${server.drives.length} drive${server.drives.length > 1 ? "s" : ""}`}
+                {showDrives ? "▲ hide" : `▼ ${server.drives.length} drive${server.drives.length > 1 ? "s" : ""}`}
               </button>
             )}
           </span>
@@ -368,7 +368,7 @@ function ServerCard({ server, selected, onSelect, isFilterActive, onCardClick })
 
       {server.error && (
         <p className="text-xs text-red-500 bg-red-50 border border-red-100 rounded px-2 py-1 break-words">
-          ΓÜá {server.error}
+          ⚠ {server.error}
         </p>
       )}
     </div>
@@ -1138,12 +1138,12 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
       if (axios.isCancel(err) || err?.code === "ERR_CANCELED") return;
       const status = err?.response?.status;
       if (status === 403) {
-        setError("Permission denied ΓÇö your account needs the 'dashboard_view' permission. Ask an Administrator to assign you to a group (e.g. Team, Leads, or Administrator).");
+        setError("Permission denied — your account needs the 'dashboard_view' permission. Ask an Administrator to assign you to a group (e.g. Team, Leads, or Administrator).");
       } else if (status === 401) {
         // axios interceptor in AuthContext will clear token and redirect to login
         setError("Session expired. Please log in again.");
       } else {
-        setError("Unable to reach the API. RetryingΓÇª");
+        setError("Unable to reach the API. Retrying…");
       }
     } finally {
       setLoading(false);
@@ -1238,7 +1238,7 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
         </svg>
-        <p className="text-slate-500 text-sm">Querying hypervisorsΓÇª</p>
+        <p className="text-slate-500 text-sm">Querying hypervisors…</p>
       </div>
     );
   }
@@ -1255,7 +1255,7 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
         <strong>{isPermError ? "Access denied:" : "Connection error:"}</strong> {error}
         {isPermError && (
           <p className="mt-3 text-xs text-amber-600">
-            Sign in as <strong>root</strong> ΓåÆ go to <strong>Users &amp; Groups</strong> ΓåÆ edit this user ΓåÆ assign the <strong>Team</strong>, <strong>Leads</strong>, or <strong>Administrator</strong> group.
+            Sign in as <strong>root</strong> → go to <strong>Users &amp; Groups</strong> → edit this user → assign the <strong>Team</strong>, <strong>Leads</strong>, or <strong>Administrator</strong> group.
           </p>
         )}
       </div>
@@ -1299,8 +1299,8 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Server Overview</h1>
           <p className="text-sm text-slate-400 flex items-center gap-2">
-            <span>Live data ┬╖ refreshes every {POLL_MS / 1000} s</span>
-            {lastUpdated && <span>┬╖ Updated {lastUpdated}</span>}
+            <span>Live data · refreshes every {POLL_MS / 1000} s</span>
+            {lastUpdated && <span>· Updated {lastUpdated}</span>}
             {fetching && (
               <svg className="animate-spin h-3 w-3 text-blue-400" viewBox="0 0 24 24" fill="none">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
@@ -1313,7 +1313,7 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
         <div className="flex items-center gap-2 flex-wrap">
           {error && (
             <span className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-3 py-1 rounded-full">
-              ΓÜá Fetch error ΓÇö showing last known data
+              ⚠ Fetch error — showing last known data
             </span>
           )}
 
@@ -1350,7 +1350,7 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
                   <path strokeLinecap="round" strokeLinejoin="round"
                         d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
                 </svg>}
-            {refreshing ? "RefreshingΓÇª" : "Refresh Now"}
+            {refreshing ? "Refreshing…" : "Refresh Now"}
           </button>
 
           {/* Send Report ΓÇö split button with format selector */}
@@ -1363,10 +1363,10 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
                 try {
                   const res = await axios.post(`${API}/api/email/send-report`,
                     { report_format: sendFmt });
-                  setSendMsg(`Γ£ô ${res.data.message}`);
+                  setSendMsg(`✓ ${res.data.message}`);
                 } catch (e) {
                   const detail = e.response?.data?.detail || "Send failed. Check Email Reports settings.";
-                  setSendMsg(`ΓÜá ${detail}`);
+                  setSendMsg(`⚠ ${detail}`);
                 } finally {
                   setSending(false);
                   setTimeout(() => setSendMsg(""), 7000);
@@ -1383,7 +1383,7 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
                     <path strokeLinecap="round" strokeLinejoin="round"
                           d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
                   </svg>}
-              {sending ? "SendingΓÇª" : "Send Report"}
+              {sending ? "Sending…" : "Send Report"}
             </button>
             {/* Format picker */}
             <select
@@ -1403,7 +1403,7 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
             <button onClick={onGoToEmail}
                     className="flex items-center gap-1.5 text-xs font-semibold text-slate-500
                       border border-slate-200 px-3 py-1.5 rounded-lg hover:bg-slate-50">
-              ΓÜÖ Email Settings
+              ⚙ Email Settings
             </button>
           )}
           {onGoToServers && (
@@ -1422,7 +1422,7 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
       {/* Send report toast */}
       {sendMsg && (
         <div className={`text-sm px-4 py-2.5 rounded-xl border ${
-          sendMsg.startsWith("Γ£ô")
+          sendMsg.startsWith("✓")
             ? "bg-emerald-50 border-emerald-200 text-emerald-800"
             : "bg-amber-50 border-amber-200 text-amber-800"
         }`}>
@@ -1439,11 +1439,11 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
           </svg>
           <div className="flex-1">
             <span className="font-bold">Critical alert</span>
-            {" ΓÇö "}
+            {" — "}
             {servers.filter(s => s.status === "critical").map(s => s.display_name).join(", ")}
             {" "}{criticalCount === 1 ? "is" : "are"} at critical CPU utilisation (&gt;90%).
             {servers.some(s => s.status === "critical" && s.error)
-              && " Connection errors detected ΓÇö check credentials."}
+              && " Connection errors detected — check credentials."}
           </div>
         </div>
       )}
@@ -1452,12 +1452,12 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <StatCard label="Total Hosts"  value={servers.length} sub="across all hypervisors" />
         <StatCard label="Total VMs"    value={totalVMs}
-                  sub={`${runningVMs} running ┬╖ ${totalVMs - runningVMs} stopped`} />
+                  sub={`${runningVMs} running · ${totalVMs - runningVMs} stopped`} />
         <StatCard label="Avg CPU"      value={`${avgCpu}%`}
                   sub="live across all hosts" accent="text-blue-600" />
         <StatCard label="Alerts"
                   value={criticalCount + warningCount}
-                  sub={`${criticalCount} critical ┬╖ ${warningCount} warning`}
+                  sub={`${criticalCount} critical · ${warningCount} warning`}
                   accent={criticalCount > 0 ? "text-red-600" : "text-amber-500"} />
       </div>
 
@@ -1627,7 +1627,7 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
               <path strokeLinecap="round" strokeLinejoin="round"
                     d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
             </svg>
-            {selectedIds.size} server{selectedIds.size > 1 ? "s" : ""} selected ΓÇö
+            {selectedIds.size} server{selectedIds.size > 1 ? "s" : ""} selected —
             click <strong>Export {selectedIds.size} Selected</strong> in the header to download a presentation-ready CSV.
           </p>
         )}
