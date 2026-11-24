@@ -591,7 +591,7 @@ function triggerCsvDownload(content, filename) {
  * onVmsUpdated – callback after a successful inline metadata save
  */
 function VMTable({ vms, filters, onFilters, onVmsUpdated, servers = [],
-                   snapCounts = {}, snapSizes = {}, onSnapCount, onClearServerSelection }) {
+                   snapCounts = {}, snapSizes = {}, snapScanned = [], onSnapCount, onClearServerSelection }) {
   // Servers picked via the dropdown / card click and/or the card checkboxes
   const pickedServerIds = (
     filters.serverId ? [filters.serverId] : (filters.serverIds || [])
@@ -918,7 +918,10 @@ function VMTable({ vms, filters, onFilters, onVmsUpdated, servers = [],
                       const sizeLabel = fmtSnapSize(snapSizes[vm.vm_id]);
                       const isOpen = snapOpen[vm.vm_id];
                       const hasCount = count > 0;
-                      const confirmed0 = snapCounts[vm.vm_id] === 0;
+                      // 0 is certain when the click-loaded count says so, or when the
+                      // background scan of this VM's host already finished.
+                      const confirmed0 = snapCounts[vm.vm_id] === 0
+                        || snapScanned.includes(String(vm.host_server_id));
                       return (
                         <button
                           onClick={() => toggleSnap(vm.vm_id)}
@@ -1046,6 +1049,7 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
   // Snapshot counts keyed by vm_id ΓÇö seeded from DB on load, updated live by panel
   const [snapCounts,  setSnapCounts]  = useState({});
   const [snapSizes,   setSnapSizes]   = useState({});
+  const [snapScanned, setSnapScanned] = useState([]);
   const handleSnapCount = useCallback((vmId, count, sizeBytes) => {
     setSnapCounts(c => ({ ...c, [vmId]: count }));
     setSnapSizes(s => ({ ...s, [vmId]: sizeBytes || 0 }));
@@ -1142,7 +1146,8 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
       setVms(vRes.data);
       setHypervisors(hRes.data);
       // Seed snapshot counts from DB; panel expansions will override with live counts
-      const summary = cRes.data || {};
+      const summary = cRes.data?.vms || {};
+      setSnapScanned((cRes.data?.scanned_servers || []).map(String));
       const counts = {}, sizes = {};
       Object.keys(summary).forEach(id => {
         counts[id] = summary[id].count;
@@ -1663,6 +1668,7 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
           servers={servers}
           snapCounts={snapCounts}
           snapSizes={snapSizes}
+          snapScanned={snapScanned}
           onSnapCount={handleSnapCount}
         />
       </section>

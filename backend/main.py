@@ -1208,8 +1208,10 @@ async def get_snapshot_counts(db: AsyncSession = Depends(get_db)):
          dependencies=[Depends(_auth.require_perm("dashboard_view"))])
 async def get_snapshot_summary(db: AsyncSession = Depends(get_db)):
     """
-    { vm_id: {"count": N, "size_bytes": B} } for every VM that has snapshots.
-    Filled by the background snapshot refresher (see _snapshot_refresh_loop).
+    {"vms": { vm_id: {"count": N, "size_bytes": B} }, "scanned_servers": [...]}
+    "vms" lists only VMs that have snapshots.  "scanned_servers" lists hosts the
+    background refresher has already scanned, so the UI can show "0 snaps" for
+    VMs on those hosts instead of waiting for a click.
     """
     from sqlalchemy import func as sa_func
     result = await db.execute(
@@ -1219,7 +1221,10 @@ async def get_snapshot_summary(db: AsyncSession = Depends(get_db)):
             sa_func.coalesce(sa_func.sum(models.VMSnapshot.size_bytes), 0).label("total"),
         ).group_by(models.VMSnapshot.vm_id)
     )
-    return {r.vm_id: {"count": r.cnt, "size_bytes": int(r.total)} for r in result.all()}
+    return {
+        "vms": {r.vm_id: {"count": r.cnt, "size_bytes": int(r.total)} for r in result.all()},
+        "scanned_servers": sorted(_snapshot_scanned),
+    }
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1230,6 +1235,7 @@ async def get_snapshot_summary(db: AsyncSession = Depends(get_db)):
 SNAPSHOT_REFRESH_SECONDS = 300      # how often every host is re-scanned
 SNAPSHOT_FIRST_RUN_DELAY = 30       # wait for the metrics cache to warm up
 _snapshot_task = None
+_snapshot_scanned: set = set()      # server_ids scanned successfully since startup
 
 
 def _snapshot_vm_id(hv_type: str, server_id: str, vm_name: str) -> str:
@@ -1294,6 +1300,7 @@ async def _refresh_snapshots_for_server(srv_row: "models.ServerConfig") -> None:
                     extra=json.dumps(snap.get("extra", {})),
                 ))
         await db.commit()
+    _snapshot_scanned.add(srv_row.server_id)
 
 
 async def _snapshot_refresh_loop() -> None:
