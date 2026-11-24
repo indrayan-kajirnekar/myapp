@@ -1,15 +1,15 @@
-/**
- * Dashboard.jsx — Live monitoring dashboard  v4.0
+﻿/**
+ * Dashboard.jsx ΓÇö Live monitoring dashboard  v4.0
  *
  * Architecture changes:
- *   • Centralized reactive filter state object (Req 2)
- *     - Single `filters` object drives ALL list rendering — no fragmented state.
+ *   ΓÇó Centralized reactive filter state object (Req 2)
+ *     - Single `filters` object drives ALL list rendering ΓÇö no fragmented state.
  *     - Level 1 (Hypervisor) and Level 2 (Server) dropdowns are bound to it.
  *     - Changing Level 1 automatically resets Level 2 (cascade reset).
- *   • Client-side VMQueryBuilder mirrors the backend builder for instant feedback (Req 4)
+ *   ΓÇó Client-side VMQueryBuilder mirrors the backend builder for instant feedback (Req 4)
  *     - Auto-detects IP / slug / free-text and applies the correct OR strategy.
- *   • Snapshotable filter state — pass ?hypervisor=X&server=Y in URL? Trivial to add.
- *   • All filter/search logic lives in ONE place: applyFilters().
+ *   ΓÇó Snapshotable filter state ΓÇö pass ?hypervisor=X&server=Y in URL? Trivial to add.
+ *   ΓÇó All filter/search logic lives in ONE place: applyFilters().
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -17,16 +17,16 @@ import axios from "axios";
 import { useAuth } from "./AuthContext";
 
 const API     = process.env.REACT_APP_API_URL || "";
-// Poll every 30 s — server cache TTL is now 60 s, so one poll per two cycles
+// Poll every 30 s ΓÇö server cache TTL is now 60 s, so one poll per two cycles
 // is enough to stay visually fresh without hammering the backend.
 const POLL_MS = 30000;
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Req 4 — Client-side VMQueryBuilder
+// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// Req 4 ΓÇö Client-side VMQueryBuilder
 // Mirrors the backend query_builder.py logic for instant, zero-latency filtering.
 // The backend endpoint also accepts the same params for server-side pagination
 // on large inventories.
-// ─────────────────────────────────────────────────────────────────────────────
+// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 const _IP_RE = /^(\d{1,3}\.){1,3}\d{0,3}$|^[\da-fA-F:]{2,39}$/;
 
@@ -56,7 +56,7 @@ function applyVMFilters(vms, { hypervisorType, serverId, powerState, search }) {
       const q = search.trim();
       if (!q) return true;
       if (_IP_RE.test(q)) {
-        // IP / prefix — substring match on ip_address (192.168.1 style)
+        // IP / prefix ΓÇö substring match on ip_address (192.168.1 style)
         if (!(vm.ip_address || "").includes(q)) return false;
       } else {
         // Word/phrase match across vm_name, owner, purpose, ip, hypervisor
@@ -74,9 +74,9 @@ function applyVMFilters(vms, { hypervisorType, serverId, powerState, search }) {
   });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 // Tiny primitives
-// ─────────────────────────────────────────────────────────────────────────────
+// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 function GaugeBar({ value }) {
   const pct    = Math.min(100, Math.max(0, Math.round(value)));
@@ -143,9 +143,9 @@ function StatCard({ label, value, sub, accent }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 // Drive breakdown row
-// ─────────────────────────────────────────────────────────────────────────────
+// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 function DriveRow({ drive }) {
   return (
@@ -162,9 +162,9 @@ function DriveRow({ drive }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Snapshot panel — expandable row showing per-VM snapshots (Fix 3)
-// ─────────────────────────────────────────────────────────────────────────────
+// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// Snapshot panel ΓÇö expandable row showing per-VM snapshots (Fix 3)
+// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 function SnapshotPanel({ vmId, vmName, onSnapCount }) {
   const [snaps,   setSnaps]   = useState(null);   // null=not loaded, []=[]=none
@@ -194,13 +194,13 @@ function SnapshotPanel({ vmId, vmName, onSnapCount }) {
         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
       </svg>
-      Fetching snapshots from hypervisor…
+      Fetching snapshots from hypervisorΓÇª
     </div>
   );
 
   if (error) return (
     <div className="flex items-center gap-2 py-2 text-xs text-red-500">
-      ⚠ {error}
+      ΓÜá {error}
       <button onClick={load} className="underline text-blue-500 ml-2">Retry</button>
     </div>
   );
@@ -224,18 +224,18 @@ function SnapshotPanel({ vmId, vmName, onSnapCount }) {
         <tbody>
           {snaps.map((s, i) => (
             <tr key={i} className="border-b border-slate-100 last:border-0">
-              <td className="py-1 pr-4 font-mono text-slate-700">{s.snap_name || "—"}</td>
+              <td className="py-1 pr-4 font-mono text-slate-700">{s.snap_name || "ΓÇö"}</td>
               <td className="py-1 pr-4 text-slate-500">
                 {s.created_at
                   ? new Date(s.created_at).toLocaleString()
-                  : <span className="text-slate-300">—</span>}
+                  : <span className="text-slate-300">ΓÇö</span>}
               </td>
               <td className="py-1 text-right tabular-nums text-slate-500">
                 {s.size_bytes > 0
                   ? s.size_bytes >= 1073741824
                     ? `${(s.size_bytes / 1073741824).toFixed(2)} GB`
                     : `${(s.size_bytes / 1048576).toFixed(0)} MB`
-                  : <span className="text-slate-300">—</span>}
+                  : <span className="text-slate-300">ΓÇö</span>}
               </td>
             </tr>
           ))}
@@ -243,15 +243,15 @@ function SnapshotPanel({ vmId, vmName, onSnapCount }) {
       </table>
       <button onClick={load}
               className="mt-2 text-[10px] text-blue-400 hover:text-blue-600 underline">
-        ↻ Refresh snapshots
+        Γå╗ Refresh snapshots
       </button>
     </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 // Per-server card  (selectable with checkbox for export)
-// ─────────────────────────────────────────────────────────────────────────────
+// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 function ServerCard({ server, selected, onSelect, isFilterActive, onCardClick }) {
   const [showDrives, setShowDrives] = useState(false);
@@ -272,7 +272,7 @@ function ServerCard({ server, selected, onSelect, isFilterActive, onCardClick })
       title={isFilterActive ? "Click to remove filter" : "Click to filter VMs by this server"}
     >
 
-      {/* Header row — checkbox + name + status */}
+      {/* Header row ΓÇö checkbox + name + status */}
       <div className="flex items-start gap-2">
         {/* Selection checkbox */}
         <input
@@ -298,7 +298,7 @@ function ServerCard({ server, selected, onSelect, isFilterActive, onCardClick })
           <StatusDot status={server.status} />
           {server.cache_age_s != null && (
             <span className={`text-[10px] tabular-nums ${isStale ? "text-amber-500 font-semibold" : "text-slate-300"}`}>
-              {isStale ? "⚠ " : ""}polled {Math.round(server.cache_age_s)}s ago
+              {isStale ? "ΓÜá " : ""}polled {Math.round(server.cache_age_s)}s ago
             </span>
           )}
         </div>
@@ -333,7 +333,7 @@ function ServerCard({ server, selected, onSelect, isFilterActive, onCardClick })
         <GaugeBar value={server.ram_usage_pct} />
       </div>
 
-      {/* Storage — aggregate gauge + optional per-drive breakdown */}
+      {/* Storage ΓÇö aggregate gauge + optional per-drive breakdown */}
       <div>
         <div className="flex justify-between text-xs text-slate-500 mb-1">
           <span className="flex items-center gap-1">
@@ -342,7 +342,7 @@ function ServerCard({ server, selected, onSelect, isFilterActive, onCardClick })
               <button
                 onClick={e => { e.stopPropagation(); setShowDrives(d => !d); }}
                 className="text-blue-500 hover:text-blue-700 ml-1 text-[10px] font-semibold">
-                {showDrives ? "▲ hide" : `▼ ${server.drives.length} drive${server.drives.length > 1 ? "s" : ""}`}
+                {showDrives ? "Γû▓ hide" : `Γû╝ ${server.drives.length} drive${server.drives.length > 1 ? "s" : ""}`}
               </button>
             )}
           </span>
@@ -362,16 +362,16 @@ function ServerCard({ server, selected, onSelect, isFilterActive, onCardClick })
 
       {server.error && (
         <p className="text-xs text-red-500 bg-red-50 border border-red-100 rounded px-2 py-1 break-words">
-          ⚠ {server.error}
+          ΓÜá {server.error}
         </p>
       )}
     </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 // Presentation CSV builder  (client-side, UTF-8 BOM, Excel-ready)
-// ─────────────────────────────────────────────────────────────────────────────
+// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 function buildPresentationCsv(servers, vms) {
   const now       = new Date().toUTCString();
@@ -383,7 +383,7 @@ function buildPresentationCsv(servers, vms) {
     ? (servers.reduce((s, h) => s + h.cpu_usage_pct, 0) / servers.length).toFixed(1)
     : 0;
 
-  // Build a quick lookup: server_id → server object
+  // Build a quick lookup: server_id ΓåÆ server object
   const serverMap = Object.fromEntries(servers.map(s => [s.server_id, s]));
 
   const esc = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
@@ -391,8 +391,8 @@ function buildPresentationCsv(servers, vms) {
 
   let csv = "";
 
-  // ── Executive summary block ───────────────────────────────────────────────
-  csv += "HYPERMONITOR — INFRASTRUCTURE DASHBOARD REPORT\n";
+  // ΓöÇΓöÇ Executive summary block ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  csv += "HYPERMONITOR ΓÇö INFRASTRUCTURE DASHBOARD REPORT\n";
   csv += `Generated:,${now}\n`;
   csv += "\n";
   csv += "EXECUTIVE SUMMARY\n";
@@ -405,7 +405,7 @@ function buildPresentationCsv(servers, vms) {
   csv += `Hosts Online,${servers.length - critCt - warnCt}\n`;
   csv += "\n";
 
-  // ── Server utilisation table ──────────────────────────────────────────────
+  // ΓöÇΓöÇ Server utilisation table ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   csv += "HOST UTILISATION DETAIL\n";
   csv += row(["Host Name", "IP Address", "Hypervisor", "CPU %", "CPU Cores",
               "RAM Used (GB)", "RAM Total (GB)", "RAM %",
@@ -420,7 +420,7 @@ function buildPresentationCsv(servers, vms) {
   }
   csv += "\n";
 
-  // ── VM inventory table — matches all columns shown in the VM Inventory UI ─
+  // ΓöÇΓöÇ VM inventory table ΓÇö matches all columns shown in the VM Inventory UI ΓöÇ
   csv += "VM INVENTORY DETAIL\n";
   csv += row(["VM Name", "IP Address", "Hypervisor Type", "Host Server", "Host IP",
               "Power State", "CPU %", "vCPUs", "RAM Used (GB)", "RAM Total (GB)", "RAM %",
@@ -509,7 +509,7 @@ function buildPresentationHtml(servers, vms) {
 </style>
 </head>
 <body>
-<h1>HyperMonitor — Infrastructure Report</h1>
+<h1>HyperMonitor ΓÇö Infrastructure Report</h1>
 <p class="sub">Generated: ${esc(now)}</p>
 
 <div class="kpi">
@@ -538,7 +538,7 @@ function buildPresentationHtml(servers, vms) {
 <tbody>${vmRows}</tbody>
 </table>
 
-<div class="footer">HyperMonitor · ${esc(now)}</div>
+<div class="footer">HyperMonitor ┬╖ ${esc(now)}</div>
 </body>
 </html>`;
 }
@@ -563,18 +563,18 @@ function triggerCsvDownload(content, filename) {
   URL.revokeObjectURL(url);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// VM Inventory Table  — driven by centralized filters prop (Req 2)
-// ─────────────────────────────────────────────────────────────────────────────
+// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// VM Inventory Table  ΓÇö driven by centralized filters prop (Req 2)
+// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 /**
  * VMTable props
- * ─────────────
- * vms         – full unfiltered VM list from the API
- * filters     – centralized filter state object from Dashboard
+ * ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+ * vms         ΓÇô full unfiltered VM list from the API
+ * filters     ΓÇô centralized filter state object from Dashboard
  *               { hypervisorType, serverId, powerState, search }
- * onFilters   – setState setter for filters (used for search + power pill)
- * onVmsUpdated – callback after a successful inline metadata save
+ * onFilters   ΓÇô setState setter for filters (used for search + power pill)
+ * onVmsUpdated ΓÇô callback after a successful inline metadata save
  */
 function VMTable({ vms, filters, onFilters, onVmsUpdated, servers = [],
                    snapCounts = {}, onSnapCount }) {
@@ -630,7 +630,7 @@ function VMTable({ vms, filters, onFilters, onVmsUpdated, servers = [],
     else { setSortKey(key); setSortAsc(true); }
   };
 
-  // ── Apply centralized filters ─────────────────────────────────────────────
+  // ΓöÇΓöÇ Apply centralized filters ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   const displayed = useMemo(() =>
     applyVMFilters(vms, filters)
       .sort((a, b) => {
@@ -651,21 +651,21 @@ function VMTable({ vms, filters, onFilters, onVmsUpdated, servers = [],
         className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider
           text-slate-500 cursor-pointer select-none whitespace-nowrap hover:text-slate-800">
       {label}
-      {sortKey === col && <span className="ml-1 text-blue-500">{sortAsc ? "▲" : "▼"}</span>}
+      {sortKey === col && <span className="ml-1 text-blue-500">{sortAsc ? "Γû▓" : "Γû╝"}</span>}
     </th>
   );
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-      {/* Toolbar — all filter controls bound to centralized `filters` state (Req 2) */}
+      {/* Toolbar ΓÇö all filter controls bound to centralized `filters` state (Req 2) */}
       <div className="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row gap-3
                       items-start sm:items-center justify-between">
         <div className="flex items-center gap-3 flex-wrap">
           <h2 className="font-semibold text-slate-800">VM Inventory</h2>
           <span className="text-xs text-slate-400">
-            {running} running · {stopped} stopped · {displayed.length} of {vms.length} total
+            {running} running ┬╖ {stopped} stopped ┬╖ {displayed.length} of {vms.length} total
           </span>
-          {/* Power state filter pills — write directly into centralized filters */}
+          {/* Power state filter pills ΓÇö write directly into centralized filters */}
           <div className="flex gap-1">
             {["all", "running", "stopped", "paused"].map(p => (
               <button key={p}
@@ -686,9 +686,9 @@ function VMTable({ vms, filters, onFilters, onVmsUpdated, servers = [],
           )}
         </div>
         <div className="flex gap-2 items-center flex-wrap">
-          {/* Search — auto-detects IP / slug / free-text via applyVMFilters */}
+          {/* Search ΓÇö auto-detects IP / slug / free-text via applyVMFilters */}
           <input type="text"
-                 placeholder="Search VMs, IPs, owners…"
+                 placeholder="Search VMs, IPs, ownersΓÇª"
                  value={filters.search || ""}
                  onChange={e => onFilters(f => ({ ...f, search: e.target.value }))}
                  className="border border-slate-300 rounded-lg px-3 py-1.5 text-sm w-full sm:w-64
@@ -696,7 +696,7 @@ function VMTable({ vms, filters, onFilters, onVmsUpdated, servers = [],
           {filters.search && (
             <button onClick={() => onFilters(f => ({ ...f, search: "" }))}
                     className="text-xs text-slate-400 hover:text-slate-700 underline whitespace-nowrap">
-              ✕ clear
+              Γ£ò clear
             </button>
           )}
           {/* Download HTML report of currently displayed VMs */}
@@ -732,7 +732,7 @@ function VMTable({ vms, filters, onFilters, onVmsUpdated, servers = [],
         </div>
       </div>
 
-      {/* Active filter status banner — shows which server/hypervisor filter is active */}
+      {/* Active filter status banner ΓÇö shows which server/hypervisor filter is active */}
       {(filters.serverId || filters.hypervisorType) && (
         <div className="px-5 py-2 bg-amber-50 border-b border-amber-200 flex items-center gap-2 text-xs text-amber-800">
           <svg className="w-3.5 h-3.5 shrink-0 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -745,17 +745,17 @@ function VMTable({ vms, filters, onFilters, onVmsUpdated, servers = [],
             )}
             {filters.serverId && (
               <strong className="ml-1">
-                {" — "}{servers.find(s => String(s.server_id) === String(filters.serverId))?.display_name || filters.serverId}
+                {" ΓÇö "}{servers.find(s => String(s.server_id) === String(filters.serverId))?.display_name || filters.serverId}
               </strong>
             )}
             <span className="ml-2 text-amber-600">
-              — showing {displayed.length} of {vms.length} VMs
+              ΓÇö showing {displayed.length} of {vms.length} VMs
             </span>
           </span>
           <button
             onClick={() => onFilters(f => ({ ...f, hypervisorType: "", serverId: "" }))}
             className="ml-auto text-amber-600 hover:text-amber-900 underline font-semibold">
-            ✕ clear filter
+            Γ£ò clear filter
           </button>
         </div>
       )}
@@ -784,21 +784,21 @@ function VMTable({ vms, filters, onFilters, onVmsUpdated, servers = [],
               <Th label="vCPUs"      col="cpu_cores" />
               <Th label="RAM Used"   col="ram_used_gb" />
               <Th label="RAM Total"  col="ram_total_gb" />
-              {/* Owner / Purpose are editable — shown with pencil icon */}
+              {/* Owner / Purpose are editable ΓÇö shown with pencil icon */}
               <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 whitespace-nowrap">
                 Owner
-                <span className="ml-1 text-slate-300">✎</span>
+                <span className="ml-1 text-slate-300">Γ£Ä</span>
               </th>
               <Th label="Created"    col="creation_date" />
               <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 whitespace-nowrap">
                 Purpose
-                <span className="ml-1 text-slate-300">✎</span>
+                <span className="ml-1 text-slate-300">Γ£Ä</span>
               </th>
-              {/* Merged Snapshots column — count badge is the expand toggle */}
+              {/* Merged Snapshots column ΓÇö count badge is the expand toggle */}
               <th className="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-500 whitespace-nowrap w-28">
                 Snapshots
               </th>
-              {/* Save column — only visible when a row is dirty */}
+              {/* Save column ΓÇö only visible when a row is dirty */}
               <th className="px-3 py-3 w-16" />
             </tr>
           </thead>
@@ -820,7 +820,7 @@ function VMTable({ vms, filters, onFilters, onVmsUpdated, servers = [],
                     {vm.vm_name}
                   </td>
                   <td className="px-3 py-2 text-xs text-slate-500 font-mono whitespace-nowrap">
-                    {vm.ip_address || <span className="text-slate-300">—</span>}
+                    {vm.ip_address || <span className="text-slate-300">ΓÇö</span>}
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap">
                     <div className="flex flex-col">
@@ -852,7 +852,7 @@ function VMTable({ vms, filters, onFilters, onVmsUpdated, servers = [],
                     <div className="w-14 mt-0.5"><GaugeBar value={vm.ram_usage_pct} /></div>
                   </td>
 
-                  {/* ── Inline-editable Owner ─────────────────────────────── */}
+                  {/* ΓöÇΓöÇ Inline-editable Owner ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
                   <td className="px-2 py-1.5 whitespace-nowrap min-w-[130px]">
                     <input
                       value={getEdit(vm, "owner_name")}
@@ -871,7 +871,7 @@ function VMTable({ vms, filters, onFilters, onVmsUpdated, servers = [],
                     {vm.creation_date}
                   </td>
 
-                  {/* ── Inline-editable Purpose ───────────────────────────── */}
+                  {/* ΓöÇΓöÇ Inline-editable Purpose ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
                   <td className="px-2 py-1.5 min-w-[160px]">
                     <input
                       value={getEdit(vm, "purpose")}
@@ -886,7 +886,7 @@ function VMTable({ vms, filters, onFilters, onVmsUpdated, servers = [],
                     />
                   </td>
 
-                  {/* ── Merged Snapshots column: count badge = expand toggle ── */}
+                  {/* ΓöÇΓöÇ Merged Snapshots column: count badge = expand toggle ΓöÇΓöÇ */}
                   <td className="px-3 py-2 whitespace-nowrap text-center w-28">
                     {(() => {
                       const count = snapCounts[vm.vm_id] ?? vm.snapshot_count;
@@ -915,13 +915,13 @@ function VMTable({ vms, filters, onFilters, onVmsUpdated, servers = [],
                               ? `${count} ${count === 1 ? "snap" : "snaps"}`
                               : confirmed0 ? "0 snaps" : "Snaps"}
                           </span>
-                          <span className="text-[9px] opacity-60">{isOpen ? "▲" : "▼"}</span>
+                          <span className="text-[9px] opacity-60">{isOpen ? "Γû▓" : "Γû╝"}</span>
                         </button>
                       );
                     })()}
                   </td>
 
-                  {/* ── Save / spinner button (only when dirty) ───────────── */}
+                  {/* ΓöÇΓöÇ Save / spinner button (only when dirty) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
                   <td className="px-2 py-1.5 whitespace-nowrap w-16">
                     {dirty && (
                       saving[vm.vm_id]
@@ -941,7 +941,7 @@ function VMTable({ vms, filters, onFilters, onVmsUpdated, servers = [],
                     )}
                   </td>
                 </tr>
-                {/* ── Expandable snapshot panel row ─────────────────────── */}
+                {/* ΓöÇΓöÇ Expandable snapshot panel row ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
                 {snapOpen[vm.vm_id] && (
                   <tr className="bg-indigo-50/40">
                     <td colSpan={14} className="px-6 py-3">
@@ -952,7 +952,7 @@ function VMTable({ vms, filters, onFilters, onVmsUpdated, servers = [],
                                 d="M4 7v10c0 2 1 3 3 3h10c2 0 3-1 3-3V7M9 3h6M9 3a1 1 0 00-1 1v1h8V4a1 1 0 00-1-1H9z"/>
                         </svg>
                         <span className="text-xs font-semibold text-indigo-600">
-                          Snapshots — {vm.vm_name}
+                          Snapshots ΓÇö {vm.vm_name}
                         </span>
                       </div>
                       <SnapshotPanel vmId={vm.vm_id} vmName={vm.vm_name} onSnapCount={onSnapCount} />
@@ -972,7 +972,7 @@ function VMTable({ vms, filters, onFilters, onVmsUpdated, servers = [],
         }
         {dirtyCount > 0 && (
           <span className="ml-3 text-amber-600">
-            — {dirtyCount} row{dirtyCount > 1 ? "s" : ""} have unsaved edits
+            ΓÇö {dirtyCount} row{dirtyCount > 1 ? "s" : ""} have unsaved edits
           </span>
         )}
       </div>
@@ -980,23 +980,23 @@ function VMTable({ vms, filters, onFilters, onVmsUpdated, servers = [],
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 // Main Dashboard
-// ─────────────────────────────────────────────────────────────────────────────
+// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 // CENTRALIZED FILTER STATE (Req 2)
-// ─────────────────────────────────────────────────────────────────────────────
+// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 //
 // All filtering is driven by a single `filters` object.
 // Components read from it and write back via setFilters (functional updates).
 //
 // Shape:
 //   {
-//     hypervisorType: string | ""   ← Level 1 dropdown
-//     serverId:       string | ""   ← Level 2 dropdown (cascades from L1)
+//     hypervisorType: string | ""   ΓåÉ Level 1 dropdown
+//     serverId:       string | ""   ΓåÉ Level 2 dropdown (cascades from L1)
 //     powerState:     string | "all"
-//     search:         string        ← smart global search
+//     search:         string        ΓåÉ smart global search
 //   }
 //
 // Rules:
@@ -1017,7 +1017,7 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
   const [servers,     setServers]     = useState([]);
   const [vms,         setVms]         = useState([]);
   const [hypervisors, setHypervisors] = useState([]);
-  // Snapshot counts keyed by vm_id — seeded from DB on load, updated live by panel
+  // Snapshot counts keyed by vm_id ΓÇö seeded from DB on load, updated live by panel
   const [snapCounts,  setSnapCounts]  = useState({});
   const handleSnapCount = useCallback((vmId, count) =>
     setSnapCounts(c => ({ ...c, [vmId]: count })), []);
@@ -1030,14 +1030,14 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
   const [error,       setError]       = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
 
-  // ── Centralized reactive filter state (Req 2) ─────────────────────────────
+  // ΓöÇΓöÇ Centralized reactive filter state (Req 2) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   const [filters,    setFilters]     = useState(EMPTY_FILTERS);
 
   // Selected server IDs for export
   const [selectedIds, setSelectedIds] = useState(new Set());
   const intervalRef = useRef(null);
 
-  // ── Level 2 server list — only servers matching the selected hypervisor ────
+  // ΓöÇΓöÇ Level 2 server list ΓÇö only servers matching the selected hypervisor ΓöÇΓöÇΓöÇΓöÇ
   const l2Servers = useMemo(
     () => filters.hypervisorType
       ? servers.filter(s => s.hypervisor_type === filters.hypervisorType)
@@ -1045,7 +1045,7 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
     [servers, filters.hypervisorType]
   );
 
-  // ── Cascade reset: changing L1 clears L2 and powerState ──────────────────
+  // ΓöÇΓöÇ Cascade reset: changing L1 clears L2 and powerState ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   const setHypervisorFilter = (hvType) => {
     setFilters(f => ({
       ...f,
@@ -1054,7 +1054,7 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
     }));
   };
 
-  // ── Select or toggle server filter from card click ────────────────────────
+  // ΓöÇΓöÇ Select or toggle server filter from card click ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   const handleServerCardClick = (server) => {
     setFilters(f => {
       if (f.serverId === server.server_id) {
@@ -1077,7 +1077,7 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
   };
 
   // Tracks the in-flight /api/vms request so a slow, stale request can be
-  // aborted the instant a newer server/hypervisor selection is made —
+  // aborted the instant a newer server/hypervisor selection is made ΓÇö
   // preventing a race condition where an old response overwrites new state.
   const vmAbortRef = useRef(null);
 
@@ -1110,16 +1110,16 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
       setLastUpdated(new Date().toLocaleTimeString());
       setError(null);
     } catch (err) {
-      // A newer request superseded this one — not a real error, ignore.
+      // A newer request superseded this one ΓÇö not a real error, ignore.
       if (axios.isCancel(err) || err?.code === "ERR_CANCELED") return;
       const status = err?.response?.status;
       if (status === 403) {
-        setError("Permission denied — your account needs the 'dashboard_view' permission. Ask an Administrator to assign you to a group (e.g. Team, Leads, or Administrator).");
+        setError("Permission denied ΓÇö your account needs the 'dashboard_view' permission. Ask an Administrator to assign you to a group (e.g. Team, Leads, or Administrator).");
       } else if (status === 401) {
         // axios interceptor in AuthContext will clear token and redirect to login
         setError("Session expired. Please log in again.");
       } else {
-        setError("Unable to reach the API. Retrying…");
+        setError("Unable to reach the API. RetryingΓÇª");
       }
     } finally {
       setLoading(false);
@@ -1127,7 +1127,7 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
     }
   }, []);
 
-  // Initial load + recurring poll — fetches the full unfiltered VM list each time.
+  // Initial load + recurring poll ΓÇö fetches the full unfiltered VM list each time.
   // Client-side applyVMFilters applies all active filters instantly on the result.
   useEffect(() => {
     fetchAll(false);
@@ -1136,10 +1136,10 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchAll]);
 
-  // No separate re-fetch needed when filters change — filtering is now 100%
+  // No separate re-fetch needed when filters change ΓÇö filtering is now 100%
   // client-side, so changing any filter is instant with no API round-trip.
 
-  // ── Permission guard — show a clear message before any API calls ──────────
+  // ΓöÇΓöÇ Permission guard ΓÇö show a clear message before any API calls ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   if (permissions && permissions.dashboard_view === false) {
     return (
       <div className="rounded-xl bg-amber-50 border border-amber-200 p-8 text-center text-amber-800 text-sm max-w-lg mx-auto mt-16">
@@ -1154,7 +1154,7 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
     );
   }
 
-  // ── Manual cache refresh ────────────────────────────────────────────────────
+  // ΓöÇΓöÇ Manual cache refresh ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   const handleRefreshNow = async () => {
     setRefreshing(true);
     try {
@@ -1164,7 +1164,7 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
     finally { setRefreshing(false); }
   };
 
-  // ── Server selection helpers ────────────────────────────────────────────────
+  // ΓöÇΓöÇ Server selection helpers ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   const toggleSelect = (serverId, checked) => {
     setSelectedIds(s => {
       const n = new Set(s);
@@ -1177,7 +1177,7 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
   const allSelected  = servers.length > 0 && selectedIds.size === servers.length;
   const noneSelected = selectedIds.size === 0;
 
-  // ── Export selected servers to presentation CSV ─────────────────────────────
+  // ΓöÇΓöÇ Export selected servers to presentation CSV ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   const handleExport = () => {
     const selServers = servers.filter(s =>
       selectedIds.size === 0 ? true : selectedIds.has(s.server_id)
@@ -1191,7 +1191,7 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
     triggerCsvDownload(csv, `hypermonitor_report_${label}_${ts}.csv`);
   };
 
-  // ── Derived KPIs — filtered VMs drive the counts when a filter is active ─────
+  // ΓöÇΓöÇ Derived KPIs ΓÇö filtered VMs drive the counts when a filter is active ΓöÇΓöÇΓöÇΓöÇΓöÇ
   const filteredVMs   = applyVMFilters(vms, filters);
   const totalVMs      = (filters.serverId || filters.hypervisorType) ? filteredVMs.length : vms.length;
   const runningVMs    = ((filters.serverId || filters.hypervisorType) ? filteredVMs : vms)
@@ -1202,7 +1202,7 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
     ? (servers.reduce((s, h) => s + h.cpu_usage_pct, 0) / servers.length).toFixed(1)
     : 0;
 
-  // ── Loading ────────────────────────────────────────────────────────────────
+  // ΓöÇΓöÇ Loading ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-32 gap-4">
@@ -1210,12 +1210,12 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
         </svg>
-        <p className="text-slate-500 text-sm">Querying hypervisors…</p>
+        <p className="text-slate-500 text-sm">Querying hypervisorsΓÇª</p>
       </div>
     );
   }
 
-  // ── Error state (no servers loaded yet) ───────────────────────────────────
+  // ΓöÇΓöÇ Error state (no servers loaded yet) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   if (error && servers.length === 0) {
     const isPermError = error.startsWith("Permission denied");
     return (
@@ -1227,14 +1227,14 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
         <strong>{isPermError ? "Access denied:" : "Connection error:"}</strong> {error}
         {isPermError && (
           <p className="mt-3 text-xs text-amber-600">
-            Sign in as <strong>root</strong> → go to <strong>Users &amp; Groups</strong> → edit this user → assign the <strong>Team</strong>, <strong>Leads</strong>, or <strong>Administrator</strong> group.
+            Sign in as <strong>root</strong> ΓåÆ go to <strong>Users &amp; Groups</strong> ΓåÆ edit this user ΓåÆ assign the <strong>Team</strong>, <strong>Leads</strong>, or <strong>Administrator</strong> group.
           </p>
         )}
       </div>
     );
   }
 
-  // ── Empty state ────────────────────────────────────────────────────────────
+  // ΓöÇΓöÇ Empty state ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   if (!loading && servers.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-5 text-center px-6">
@@ -1266,13 +1266,13 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
   return (
     <div className="flex flex-col gap-8">
 
-      {/* ── Page header ─────────────────────────────────────────────────────── */}
+      {/* ΓöÇΓöÇ Page header ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Server Overview</h1>
           <p className="text-sm text-slate-400 flex items-center gap-2">
-            <span>Live data · refreshes every {POLL_MS / 1000} s</span>
-            {lastUpdated && <span>· Updated {lastUpdated}</span>}
+            <span>Live data ┬╖ refreshes every {POLL_MS / 1000} s</span>
+            {lastUpdated && <span>┬╖ Updated {lastUpdated}</span>}
             {fetching && (
               <svg className="animate-spin h-3 w-3 text-blue-400" viewBox="0 0 24 24" fill="none">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
@@ -1285,7 +1285,7 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
         <div className="flex items-center gap-2 flex-wrap">
           {error && (
             <span className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-3 py-1 rounded-full">
-              ⚠ Fetch error — showing last known data
+              ΓÜá Fetch error ΓÇö showing last known data
             </span>
           )}
 
@@ -1322,10 +1322,10 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
                   <path strokeLinecap="round" strokeLinejoin="round"
                         d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
                 </svg>}
-            {refreshing ? "Refreshing…" : "Refresh Now"}
+            {refreshing ? "RefreshingΓÇª" : "Refresh Now"}
           </button>
 
-          {/* Send Report — split button with format selector */}
+          {/* Send Report ΓÇö split button with format selector */}
           <div className="flex items-center rounded-lg border border-slate-300 overflow-hidden divide-x divide-slate-300">
             {/* Main action button */}
             <button
@@ -1335,10 +1335,10 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
                 try {
                   const res = await axios.post(`${API}/api/email/send-report`,
                     { report_format: sendFmt });
-                  setSendMsg(`✓ ${res.data.message}`);
+                  setSendMsg(`Γ£ô ${res.data.message}`);
                 } catch (e) {
                   const detail = e.response?.data?.detail || "Send failed. Check Email Reports settings.";
-                  setSendMsg(`⚠ ${detail}`);
+                  setSendMsg(`ΓÜá ${detail}`);
                 } finally {
                   setSending(false);
                   setTimeout(() => setSendMsg(""), 7000);
@@ -1355,7 +1355,7 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
                     <path strokeLinecap="round" strokeLinejoin="round"
                           d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
                   </svg>}
-              {sending ? "Sending…" : "Send Report"}
+              {sending ? "SendingΓÇª" : "Send Report"}
             </button>
             {/* Format picker */}
             <select
@@ -1375,7 +1375,7 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
             <button onClick={onGoToEmail}
                     className="flex items-center gap-1.5 text-xs font-semibold text-slate-500
                       border border-slate-200 px-3 py-1.5 rounded-lg hover:bg-slate-50">
-              ⚙ Email Settings
+              ΓÜÖ Email Settings
             </button>
           )}
           {onGoToServers && (
@@ -1394,7 +1394,7 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
       {/* Send report toast */}
       {sendMsg && (
         <div className={`text-sm px-4 py-2.5 rounded-xl border ${
-          sendMsg.startsWith("✓")
+          sendMsg.startsWith("Γ£ô")
             ? "bg-emerald-50 border-emerald-200 text-emerald-800"
             : "bg-amber-50 border-amber-200 text-amber-800"
         }`}>
@@ -1402,7 +1402,7 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
         </div>
       )}
 
-      {/* ── Critical alert banner ─────────────────────────────────────────── */}
+      {/* ΓöÇΓöÇ Critical alert banner ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
       {criticalCount > 0 && (
         <div className="flex items-center gap-3 bg-red-50 border border-red-300 rounded-xl px-5 py-3 text-sm text-red-800">
           <svg className="w-5 h-5 shrink-0 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -1411,35 +1411,35 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
           </svg>
           <div className="flex-1">
             <span className="font-bold">Critical alert</span>
-            {" — "}
+            {" ΓÇö "}
             {servers.filter(s => s.status === "critical").map(s => s.display_name).join(", ")}
             {" "}{criticalCount === 1 ? "is" : "are"} at critical CPU utilisation (&gt;90%).
             {servers.some(s => s.status === "critical" && s.error)
-              && " Connection errors detected — check credentials."}
+              && " Connection errors detected ΓÇö check credentials."}
           </div>
         </div>
       )}
 
-      {/* ── KPI strip ────────────────────────────────────────────────────── */}
+      {/* ΓöÇΓöÇ KPI strip ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <StatCard label="Total Hosts"  value={servers.length} sub="across all hypervisors" />
         <StatCard label="Total VMs"    value={totalVMs}
-                  sub={`${runningVMs} running · ${totalVMs - runningVMs} stopped`} />
+                  sub={`${runningVMs} running ┬╖ ${totalVMs - runningVMs} stopped`} />
         <StatCard label="Avg CPU"      value={`${avgCpu}%`}
                   sub="live across all hosts" accent="text-blue-600" />
         <StatCard label="Alerts"
                   value={criticalCount + warningCount}
-                  sub={`${criticalCount} critical · ${warningCount} warning`}
+                  sub={`${criticalCount} critical ┬╖ ${warningCount} warning`}
                   accent={criticalCount > 0 ? "text-red-600" : "text-amber-500"} />
       </div>
 
-      {/* ── Req 2 — Level 1 + Level 2 Composable Filter Dropdowns ─────────── */}
+      {/* ΓöÇΓöÇ Req 2 ΓÇö Level 1 + Level 2 Composable Filter Dropdowns ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
       <section className="bg-white rounded-xl border border-slate-200 shadow-sm px-5 py-4">
         <div className="flex flex-wrap items-end gap-4">
-          {/* Level 1 — Hypervisor Type */}
+          {/* Level 1 ΓÇö Hypervisor Type */}
           <div className="flex flex-col gap-1 min-w-[180px]">
             <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Level 1 — Hypervisor
+              Level 1 ΓÇö Hypervisor
             </label>
             <select
               value={filters.hypervisorType}
@@ -1449,16 +1449,16 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
               <option value="">All Hypervisors</option>
               {hypervisors.map(hv => (
                 <option key={hv.name} value={hv.name}>
-                  {hv.name} ({hv.server_count} hosts · {hv.vm_count} VMs)
+                  {hv.name} ({hv.server_count} hosts ┬╖ {hv.vm_count} VMs)
                 </option>
               ))}
             </select>
           </div>
 
-          {/* Level 2 — Server (cascades from L1) */}
+          {/* Level 2 ΓÇö Server (cascades from L1) */}
           <div className="flex flex-col gap-1 min-w-[200px]">
             <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Level 2 — Server Host
+              Level 2 ΓÇö Server Host
             </label>
             <select
               value={filters.serverId}
@@ -1497,7 +1497,7 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
                 border border-blue-200 px-2 py-0.5 rounded-full font-medium">
                 <HypervisorBadge type={filters.hypervisorType} />
                 <button onClick={() => setHypervisorFilter("")}
-                        className="ml-1 hover:text-blue-900">✕</button>
+                        className="ml-1 hover:text-blue-900">Γ£ò</button>
               </span>
             )}
             {filters.serverId && (
@@ -1506,7 +1506,7 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
                 {l2Servers.find(s => s.server_id === filters.serverId)?.display_name
                   || filters.serverId}
                 <button onClick={() => setFilters(f => ({ ...f, serverId: "" }))}
-                        className="ml-1 hover:text-slate-900">✕</button>
+                        className="ml-1 hover:text-slate-900">Γ£ò</button>
               </span>
             )}
             {(filters.hypervisorType || filters.serverId ||
@@ -1521,7 +1521,7 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
         </div>
       </section>
 
-      {/* ── Hypervisor summary — clickable filter cards ───────────────────── */}
+      {/* ΓöÇΓöÇ Hypervisor summary ΓÇö clickable filter cards ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
       {hypervisors.length > 0 && (
         <section>
           <h2 className="text-base font-semibold text-slate-700 mb-3">Hypervisor Summary</h2>
@@ -1554,7 +1554,7 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
         </section>
       )}
 
-      {/* ── Server cards — selectable for export ─────────────────────────── */}
+      {/* ΓöÇΓöÇ Server cards ΓÇö selectable for export ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
       <section>
         <div className="flex items-center gap-3 mb-3">
           <h2 className="text-base font-semibold text-slate-700">Live Host Utilisation</h2>
@@ -1599,13 +1599,13 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
               <path strokeLinecap="round" strokeLinejoin="round"
                     d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
             </svg>
-            {selectedIds.size} server{selectedIds.size > 1 ? "s" : ""} selected —
+            {selectedIds.size} server{selectedIds.size > 1 ? "s" : ""} selected ΓÇö
             click <strong>Export {selectedIds.size} Selected</strong> in the header to download a presentation-ready CSV.
           </p>
         )}
       </section>
 
-      {/* ── VM inventory — centralized filter state drives everything ──────── */}
+      {/* ΓöÇΓöÇ VM inventory ΓÇö centralized filter state drives everything ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
       <section>
         <VMTable
           vms={vms}

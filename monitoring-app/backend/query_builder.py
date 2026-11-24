@@ -1,8 +1,8 @@
-"""
-query_builder.py — Extensible Builder Pattern for the VM inventory search API.
+﻿"""
+query_builder.py ΓÇö Extensible Builder Pattern for the VM inventory search API.
 
 Usage
-─────
+ΓöÇΓöÇΓöÇΓöÇΓöÇ
     from query_builder import VMQueryBuilder
 
     results = (
@@ -15,20 +15,20 @@ Usage
     )
 
 Design
-──────
-• Each .filter_*() / .search() call pushes a predicate (Callable[[dict], bool])
+ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+ΓÇó Each .filter_*() / .search() call pushes a predicate (Callable[[dict], bool])
   onto an internal list.
-• .build() applies all predicates with a logical AND across all VMs.
-• search() auto-classifies the query string:
-    - Looks like an IP (digits + dots / colons)  → match ip_address substring
-    - Looks like a server_id slug (hyphenated)   → match host_server_id exactly
-    - Otherwise                                  → OR across vm_name + owner_name
+ΓÇó .build() applies all predicates with a logical AND across all VMs.
+ΓÇó search() auto-classifies the query string:
+    - Looks like an IP (digits + dots / colons)  ΓåÆ match ip_address substring
+    - Looks like a server_id slug (hyphenated)   ΓåÆ match host_server_id exactly
+    - Otherwise                                  ΓåÆ OR across vm_name + owner_name
                                                    + purpose (case-insensitive)
-• Merging filters is additive: every chain call narrows the result set.
+ΓÇó Merging filters is additive: every chain call narrows the result set.
   This eliminates every nested if/else statement in route handlers.
 
 Extending
-─────────
+ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 Add a new dimension by adding a method:
 
     def filter_status(self, status: str) -> "VMQueryBuilder":
@@ -54,14 +54,14 @@ class VMQueryBuilder:
     """
     Composable, predicate-driven filter chain for VM records.
 
-    Works on plain dicts (as returned by /api/vms) — no ORM dependency.
+    Works on plain dicts (as returned by /api/vms) ΓÇö no ORM dependency.
     """
 
     def __init__(self, vms: list[dict[str, Any]]) -> None:
         self._vms: list[dict[str, Any]] = vms
         self._predicates: list[Callable[[dict[str, Any]], bool]] = []
 
-    # ── Dimension filters (each returns self for chaining) ────────────────────
+    # ΓöÇΓöÇ Dimension filters (each returns self for chaining) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
     def filter_hypervisor(self, hypervisor_type: str | None) -> "VMQueryBuilder":
         """Narrow to a specific hypervisor type; no-op when None or empty."""
@@ -97,15 +97,15 @@ class VMQueryBuilder:
             )
         return self
 
-    # ── Smart global search ───────────────────────────────────────────────────
+    # ΓöÇΓöÇ Smart global search ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
     def search(self, query: str | None) -> "VMQueryBuilder":
         """
         Auto-classify the query string and apply an OR match:
 
-        IP-like string  → substring match on vm.ip_address
-        Hyphenated slug → exact match on vm.host_server_id
-        Anything else   → OR across vm_name, owner_name, purpose (case-insensitive)
+        IP-like string  ΓåÆ substring match on vm.ip_address
+        Hyphenated slug ΓåÆ exact match on vm.host_server_id
+        Anything else   ΓåÆ OR across vm_name, owner_name, purpose (case-insensitive)
 
         A blank or None query is a no-op (returns self unchanged).
         """
@@ -117,12 +117,12 @@ class VMQueryBuilder:
             return self
 
         if _IP_PATTERN.match(q):
-            # IP-prefix or full IP — substring search on ip_address
+            # IP-prefix or full IP ΓÇö substring search on ip_address
             self._predicates.append(
                 lambda vm, _q=q: _q in (vm.get("ip_address") or "")
             )
         elif re.match(r"^[a-z0-9]+-[a-z0-9-]+$", q, re.IGNORECASE):
-            # Slug pattern (e.g. "prod-kvm-7f2a1b") — exact server_id match
+            # Slug pattern (e.g. "prod-kvm-7f2a1b") ΓÇö exact server_id match
             self._predicates.append(
                 lambda vm, _q=q: (
                     vm.get("host_server_id", "").lower() == _q.lower()
@@ -143,7 +143,7 @@ class VMQueryBuilder:
             )
         return self
 
-    # ── Terminal operation ────────────────────────────────────────────────────
+    # ΓöÇΓöÇ Terminal operation ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
     def build(self) -> list[dict[str, Any]]:
         """
