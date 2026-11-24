@@ -68,6 +68,42 @@ class HyperVAdapter(HypervisorInterface):
         except Exception:
             return []
 
+
+    def get_snapshots_for_vms(self, vm_names: list[str]) -> dict[str, list[dict[str, Any]]] | None:
+        """All snapshots of every VM on the host in ONE PowerShell call."""
+        try:
+            ps = self._ps_session()
+            raw = ps(
+                "Get-VMSnapshot -VMName * | "
+                "ForEach-Object { [PSCustomObject]@{ "
+                "  VMName     = $_.VMName; "
+                "  Name       = $_.Name; "
+                "  CreationTime = $_.CreationTime.ToUniversalTime().ToString('o'); "
+                "  SizeGB     = [math]::Round( "
+                "    (Get-ChildItem ($_.Path) -Recurse -ErrorAction SilentlyContinue "
+                "     | Measure-Object -Property Length -Sum).Sum / 1GB, 3) "
+                "} } | ConvertTo-Json -Compress"
+            )
+            items = json.loads(raw) if raw else []
+            if isinstance(items, dict):
+                items = [items]
+            result: dict[str, list[dict[str, Any]]] = {n: [] for n in vm_names}
+            for item in items:
+                name = item.get("VMName", "")
+                if name not in result:
+                    continue
+                result[name].append({
+                    "vm_name":    name,
+                    "snap_name":  item.get("Name", ""),
+                    "created_at": item.get("CreationTime", ""),
+                    "size_bytes": int(float(item.get("SizeGB") or 0) * (1024 ** 3)),
+                })
+            return result
+        except Exception:
+            return None
+
+
+
     # ── Private helpers ───────────────────────────────────────────────────────
 
     def _ps_session(self):

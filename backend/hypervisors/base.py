@@ -109,6 +109,20 @@ class HypervisorInterface(abc.ABC):
         does not exist.  Must never raise — return [] on any error.
         """
 
+
+    def get_snapshots_for_vms(self, vm_names: list[str]) -> dict[str, list[dict[str, Any]]] | None:
+        """
+        Return {vm_name: [SnapshotDict, ...]} for every name in vm_names
+        (empty list when a VM has no snapshots).  Returns None when the host
+        could not be queried at all, so callers keep their previous data.
+
+        Default: one get_vm_snapshots() call per VM.  Adapters override this
+        to fetch everything over a single connection.
+        """
+        return {name: self.get_vm_snapshots(name) for name in vm_names}
+
+
+
     # ── Helpers available to all adapters ────────────────────────────────────
 
     @staticmethod

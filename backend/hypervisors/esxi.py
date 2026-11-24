@@ -54,13 +54,75 @@ class ESXiAdapter(HypervisorInterface):
                 self._walk_snapshot_tree(
                     target_vm.snapshot.rootSnapshotList, vm_name, snaps
                 )
+                if snaps:
+                    share = self._snapshot_footprint_bytes(target_vm) // len(snaps)
+                    for s in snaps:
+                        s["size_bytes"] = share
             from pyVim.connect import Disconnect
             Disconnect(si)
             return snaps
         except Exception:
             return []
 
+
+    def get_snapshots_for_vms(self, vm_names: list[str]) -> dict[str, list[dict[str, Any]]] | None:
+        """All snapshots for the given VMs over ONE pyVmomi connection."""
+        try:
+            from pyVmomi import vim
+            from pyVim.connect import Disconnect
+            si, _ = self._connect()
+            try:
+                content = si.RetrieveContent()
+                vm_view = content.viewManager.CreateContainerView(
+                    content.rootFolder, [vim.VirtualMachine], True
+                )
+                wanted = set(vm_names)
+                result: dict[str, list[dict[str, Any]]] = {n: [] for n in wanted}
+                for v in vm_view.view:
+                    name = v.config.name if v.config else None
+                    if name in wanted and v.snapshot:
+                        snaps: list[dict[str, Any]] = []
+                        self._walk_snapshot_tree(
+                            v.snapshot.rootSnapshotList, name, snaps
+                        )
+                        # ESXi has no per-snapshot size; spread the VM's total
+                        # snapshot footprint evenly so the sum stays correct.
+                        if snaps:
+                            share = self._snapshot_footprint_bytes(v) // len(snaps)
+                            for s in snaps:
+                                s["size_bytes"] = share
+                        result[name] = snaps
+                vm_view.Destroy()
+                return result
+            finally:
+                Disconnect(si)
+        except Exception:
+            return None
+
+
+
     # ── Private helpers ───────────────────────────────────────────────────────
+
+    @staticmethod
+    def _snapshot_footprint_bytes(vm) -> int:
+        """
+        Bytes used by snapshots of a VM: delta disks (-000001.vmdk,
+        -000001-delta.vmdk, -000001-sesparse.vmdk) plus snapshot data,
+        memory and list files.  Returns 0 when layout info is unavailable.
+        """
+        import re
+        try:
+            files = vm.layoutEx.file if vm.layoutEx else []
+        except Exception:
+            return 0
+        delta_re = re.compile(r"-\d{6}(-delta|-sesparse)?\.vmdk$")
+        total = 0
+        for f in files:
+            if f.type in ("snapshotData", "snapshotMemory", "snapshotList"):
+                total += int(f.size or 0)
+            elif f.type in ("diskExtent", "diskDescriptor") and delta_re.search(f.name or ""):
+                total += int(f.size or 0)
+        return total
 
     def _connect(self):
         from pyVim.connect import SmartConnect

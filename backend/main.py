@@ -120,6 +120,11 @@ async def startup_event():
 
     metrics_cache.start_background_poller(_fetch_live_metrics, _get_enabled_rows)
 
+    # ── Start background snapshot refresher (count + size for the VM table) ──
+    import asyncio as _asyncio
+    global _snapshot_task
+    _snapshot_task = _asyncio.create_task(_snapshot_refresh_loop())
+
     # ── Restore scheduled report if one was saved ────────────────────────────
     async with SessionLocal() as db:
         result = await db.execute(
@@ -134,6 +139,8 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     metrics_cache.stop_background_poller()
+    if _snapshot_task:
+        _snapshot_task.cancel()
     report_scheduler.stop()
 
 
@@ -1195,6 +1202,124 @@ async def get_snapshot_counts(db: AsyncSession = Depends(get_db)):
         .group_by(models.VMSnapshot.vm_id)
     )
     return {row.vm_id: row.cnt for row in result.all()}
+
+
+@app.get("/api/snapshots/summary", tags=["Snapshots"],
+         dependencies=[Depends(_auth.require_perm("dashboard_view"))])
+async def get_snapshot_summary(db: AsyncSession = Depends(get_db)):
+    """
+    { vm_id: {"count": N, "size_bytes": B} } for every VM that has snapshots.
+    Filled by the background snapshot refresher (see _snapshot_refresh_loop).
+    """
+    from sqlalchemy import func as sa_func
+    result = await db.execute(
+        select(
+            models.VMSnapshot.vm_id,
+            sa_func.count().label("cnt"),
+            sa_func.coalesce(sa_func.sum(models.VMSnapshot.size_bytes), 0).label("total"),
+        ).group_by(models.VMSnapshot.vm_id)
+    )
+    return {r.vm_id: {"count": r.cnt, "size_bytes": int(r.total)} for r in result.all()}
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Background snapshot refresher — keeps vm_snapshot filled for ALL VMs so the
+# inventory badge can show "N snaps · size" without anyone opening a panel.
+# ──────────────────────────────────────────────────────────────────────────────
+
+SNAPSHOT_REFRESH_SECONDS = 300      # how often every host is re-scanned
+SNAPSHOT_FIRST_RUN_DELAY = 30       # wait for the metrics cache to warm up
+_snapshot_task = None
+
+
+def _snapshot_vm_id(hv_type: str, server_id: str, vm_name: str) -> str:
+    """Same vm_id format as get_vms()."""
+    short      = hv_type.replace(" ", "").replace("-", "")[:4].lower()
+    safe_name  = re.sub(r"[^a-z0-9]", "-", vm_name.lower())[:20]
+    srv_suffix = server_id[-6:] if len(server_id) >= 6 else server_id
+    return f"{short}-{srv_suffix}-{safe_name}"
+
+
+async def _refresh_snapshots_for_server(srv_row: "models.ServerConfig") -> None:
+    import asyncio as _asyncio
+    import logging
+    from datetime import datetime as _dt
+
+    data = metrics_cache.get_cached(srv_row.server_id) \
+           or metrics_cache.get_cached_stale(srv_row.server_id)
+    if not data:
+        return
+    vm_names = [v["vm_name"] for v in data.get("vms", [])]
+    if not vm_names:
+        return
+    username = decrypt(srv_row.username_enc)
+    password = decrypt(srv_row.password_enc)
+    if not username or not password:
+        return
+
+    adapter = get_adapter(srv_row, username, password)
+    loop    = _asyncio.get_running_loop()
+    by_vm   = await loop.run_in_executor(None, adapter.get_snapshots_for_vms, vm_names)
+    if by_vm is None:      # host unreachable — keep whatever we had before
+        logging.getLogger(__name__).warning(
+            "Snapshot refresh skipped for %s (query failed)", srv_row.server_id)
+        return
+
+    async with SessionLocal() as db:
+        await db.execute(
+            models.VMSnapshot.__table__.delete().where(
+                (models.VMSnapshot.server_id == srv_row.server_id) &
+                (models.VMSnapshot.vm_name.in_(vm_names))
+            )
+        )
+        for vm_name, snaps in by_vm.items():
+            vm_id = _snapshot_vm_id(srv_row.hypervisor_type, srv_row.server_id, vm_name)
+            for snap in snaps:
+                created = None
+                raw_ts  = snap.get("created_at", "")
+                if raw_ts:
+                    try:
+                        created = _dt.fromisoformat(
+                            raw_ts.replace("Z", "+00:00")).replace(tzinfo=None)
+                    except ValueError:
+                        pass
+                db.add(models.VMSnapshot(
+                    server_id=srv_row.server_id,
+                    vm_id=vm_id,
+                    vm_name=vm_name,
+                    snap_name=snap.get("snap_name", ""),
+                    created_at=created,
+                    size_bytes=int(snap.get("size_bytes", 0)),
+                    hypervisor_type=srv_row.hypervisor_type,
+                    extra=json.dumps(snap.get("extra", {})),
+                ))
+        await db.commit()
+
+
+async def _snapshot_refresh_loop() -> None:
+    import asyncio as _asyncio
+    import logging
+    log = logging.getLogger(__name__)
+    await _asyncio.sleep(SNAPSHOT_FIRST_RUN_DELAY)
+    while True:
+        try:
+            async with SessionLocal() as db:
+                result = await db.execute(
+                    select(models.ServerConfig).where(models.ServerConfig.enabled == True))
+                rows = result.scalars().all()
+            # Hosts are scanned in parallel; one failing host never stops the others.
+            outcomes = await _asyncio.gather(
+                *(_refresh_snapshots_for_server(r) for r in rows),
+                return_exceptions=True,
+            )
+            for r, o in zip(rows, outcomes):
+                if isinstance(o, Exception):
+                    log.warning("Snapshot refresh failed for %s: %s", r.server_id, o)
+        except _asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            log.warning("Snapshot refresh loop error: %s", exc)
+        await _asyncio.sleep(SNAPSHOT_REFRESH_SECONDS)
 
 
 # ──────────────────────────────────────────────────────────────────────────────

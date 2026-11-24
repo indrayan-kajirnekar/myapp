@@ -172,6 +172,13 @@ function DriveRow({ drive }) {
 // Snapshot panel — expandable row showing per-VM snapshots (Fix 3)
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Compact size label for the Snapshots badge ("512 MB", "28.47 GB")
+function fmtSnapSize(bytes) {
+  if (!bytes || bytes <= 0) return "";
+  if (bytes >= 1073741824) return `${(bytes / 1073741824).toFixed(2)} GB`;
+  return `${Math.max(1, Math.round(bytes / 1048576))} MB`;
+}
+
 function SnapshotPanel({ vmId, vmName, onSnapCount }) {
   const [snaps,   setSnaps]   = useState(null);   // null=not loaded, []=[]=none
   const [loading, setLoading] = useState(false);
@@ -183,7 +190,8 @@ function SnapshotPanel({ vmId, vmName, onSnapCount }) {
     try {
       const { data } = await axios.get(`${API}/api/vms/${vmId}/snapshots`);
       setSnaps(data);
-      onSnapCount?.(vmId, data.length);
+      onSnapCount?.(vmId, data.length,
+        data.reduce((sum, s) => sum + (s.size_bytes || 0), 0));
     } catch (e) {
       setError(e?.response?.data?.detail || "Failed to fetch snapshots.");
     } finally {
@@ -583,7 +591,7 @@ function triggerCsvDownload(content, filename) {
  * onVmsUpdated – callback after a successful inline metadata save
  */
 function VMTable({ vms, filters, onFilters, onVmsUpdated, servers = [],
-                   snapCounts = {}, onSnapCount, onClearServerSelection }) {
+                   snapCounts = {}, snapSizes = {}, onSnapCount, onClearServerSelection }) {
   // Servers picked via the dropdown / card click and/or the card checkboxes
   const pickedServerIds = (
     filters.serverId ? [filters.serverId] : (filters.serverIds || [])
@@ -812,7 +820,7 @@ function VMTable({ vms, filters, onFilters, onVmsUpdated, servers = [],
                 <span className="ml-1 text-slate-300">✎</span>
               </th>
               {/* Merged Snapshots column — count badge is the expand toggle */}
-              <th className="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-500 whitespace-nowrap w-28">
+              <th className="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-500 whitespace-nowrap w-44">
                 Snapshots
               </th>
               {/* Save column — only visible when a row is dirty */}
@@ -904,9 +912,10 @@ function VMTable({ vms, filters, onFilters, onVmsUpdated, servers = [],
                   </td>
 
                   {/* ── Merged Snapshots column: count badge = expand toggle ── */}
-                  <td className="px-3 py-2 whitespace-nowrap text-center w-28">
+                  <td className="px-3 py-2 whitespace-nowrap text-center w-44">
                     {(() => {
                       const count = snapCounts[vm.vm_id] ?? vm.snapshot_count;
+                      const sizeLabel = fmtSnapSize(snapSizes[vm.vm_id]);
                       const isOpen = snapOpen[vm.vm_id];
                       const hasCount = count > 0;
                       const confirmed0 = snapCounts[vm.vm_id] === 0;
@@ -929,7 +938,7 @@ function VMTable({ vms, filters, onFilters, onVmsUpdated, servers = [],
                           </svg>
                           <span>
                             {hasCount
-                              ? `${count} ${count === 1 ? "snap" : "snaps"}`
+                              ? `${count} ${count === 1 ? "snap" : "snaps"}${sizeLabel ? ` · ${sizeLabel}` : ""}`
                               : confirmed0 ? "0 snaps" : "Snaps"}
                           </span>
                           <span className="text-[9px] opacity-60">{isOpen ? "▲" : "▼"}</span>
@@ -1036,8 +1045,11 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
   const [hypervisors, setHypervisors] = useState([]);
   // Snapshot counts keyed by vm_id ΓÇö seeded from DB on load, updated live by panel
   const [snapCounts,  setSnapCounts]  = useState({});
-  const handleSnapCount = useCallback((vmId, count) =>
-    setSnapCounts(c => ({ ...c, [vmId]: count })), []);
+  const [snapSizes,   setSnapSizes]   = useState({});
+  const handleSnapCount = useCallback((vmId, count, sizeBytes) => {
+    setSnapCounts(c => ({ ...c, [vmId]: count }));
+    setSnapSizes(s => ({ ...s, [vmId]: sizeBytes || 0 }));
+  }, []);
   const [loading,     setLoading]     = useState(true);
   const [fetching,    setFetching]    = useState(false);
   const [refreshing,  setRefreshing]  = useState(false);
@@ -1124,13 +1136,20 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
         axios.get(`${API}/api/servers`),
         axios.get(`${API}/api/vms`, { signal: controller.signal }),
         axios.get(`${API}/api/hypervisors`),
-        axios.get(`${API}/api/snapshots/counts`),
+        axios.get(`${API}/api/snapshots/summary`),
       ]);
       setServers(sRes.data);
       setVms(vRes.data);
       setHypervisors(hRes.data);
       // Seed snapshot counts from DB; panel expansions will override with live counts
-      setSnapCounts(prev => ({ ...prev, ...cRes.data }));
+      const summary = cRes.data || {};
+      const counts = {}, sizes = {};
+      Object.keys(summary).forEach(id => {
+        counts[id] = summary[id].count;
+        sizes[id]  = summary[id].size_bytes;
+      });
+      setSnapCounts(counts);
+      setSnapSizes(sizes);
       setLastUpdated(new Date().toLocaleTimeString());
       setError(null);
     } catch (err) {
@@ -1643,6 +1662,7 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
           onVmsUpdated={() => fetchAll(true)}
           servers={servers}
           snapCounts={snapCounts}
+          snapSizes={snapSizes}
           onSnapCount={handleSnapCount}
         />
       </section>

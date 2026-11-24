@@ -67,6 +67,44 @@ class KVMAdapter(HypervisorInterface):
         except Exception:
             return []
 
+
+    def get_snapshots_for_vms(self, vm_names: list[str]) -> dict[str, list[dict[str, Any]]] | None:
+        """All snapshots for the given VMs over ONE SSH connection."""
+        import shlex
+        try:
+            client = self._connect()
+            try:
+                result: dict[str, list[dict[str, Any]]] = {}
+                for name in vm_names:
+                    q = shlex.quote(name)
+                    out = self._run(
+                        client,
+                        f"virsh -c qemu:///system snapshot-list {q} 2>/dev/null"
+                        f" || virsh snapshot-list {q} 2>/dev/null || echo ''",
+                    )
+                    snaps: list[dict[str, Any]] = []
+                    for line in out.splitlines():
+                        stripped = line.strip()
+                        if not stripped or stripped.startswith("Name") or stripped.startswith("-"):
+                            continue
+                        parts = stripped.split()
+                        if len(parts) < 3:
+                            continue
+                        snaps.append({
+                            "vm_name":    name,
+                            "snap_name":  parts[0],
+                            "created_at": f"{parts[1]}T{parts[2]}+00:00",
+                            "size_bytes": 0,   # virsh snapshot-list doesn't expose size
+                        })
+                    result[name] = snaps
+                return result
+            finally:
+                client.close()
+        except Exception:
+            return None
+
+
+
     # ── Private helpers ───────────────────────────────────────────────────────
 
     def _connect(self):
