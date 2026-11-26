@@ -153,15 +153,176 @@ function StatusDot({ status }) {
   );
 }
 
-function StatCard({ label, value, sub, accent }) {
+function StatCard({ label, value, sub, accent, onClick }) {
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 flex flex-col gap-1">
+    <div
+      onClick={onClick}
+      title={onClick ? "Click to see details" : undefined}
+      className={`bg-white rounded-xl shadow-sm border border-slate-200 p-5 flex flex-col gap-1
+        ${onClick ? "cursor-pointer hover:border-blue-300 hover:shadow-md transition-shadow" : ""}`}>
       <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">{label}</p>
       <p className={`text-3xl font-bold ${accent ?? "text-slate-800"}`}>{value}</p>
       {sub && <p className="text-xs text-slate-400">{sub}</p>}
     </div>
   );
 }
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Alerts details panel — separate tabs for Host alerts and VM alerts
+// ─────────────────────────────────────────────────────────────────────────────
+
+function AlertMetric({ label, value, detail }) {
+  if (value == null) return null;
+  return (
+    <div className="min-w-[110px]">
+      <div className="flex justify-between text-[11px] text-slate-500 mb-0.5">
+        <span>{label}</span>
+        <span className="tabular-nums font-semibold text-slate-700">{value}%</span>
+      </div>
+      <GaugeBar value={value} />
+      {detail && <div className="text-[10px] text-slate-400 mt-0.5">{detail}</div>}
+    </div>
+  );
+}
+
+function AlertsPanel({ servers, vms, tab, onTab, onClose }) {
+  useEffect(() => {
+    const onKey = e => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const worst = x => Math.max(x.cpu_usage_pct || 0, x.ram_usage_pct || 0, x.storage_usage_pct || 0);
+  const byLevel = (list, level) =>
+    list.filter(x => x.status === level).sort((a, b) => worst(b) - worst(a));
+
+  const hostCrit = byLevel(servers, "critical");
+  const hostWarn = byLevel(servers, "warning");
+  const vmCrit   = byLevel(vms, "critical");
+  const vmWarn   = byLevel(vms, "warning");
+  const hostName = id => servers.find(s => s.server_id === id)?.display_name || id;
+
+  const hostCount = hostCrit.length + hostWarn.length;
+  const vmCount   = vmCrit.length + vmWarn.length;
+
+  const tabBtn = (key, label, count) => (
+    <button
+      onClick={() => onTab(key)}
+      className={`px-4 py-2 text-sm font-semibold rounded-t-lg border-b-2 transition-colors
+        ${tab === key
+          ? "border-blue-600 text-blue-700"
+          : "border-transparent text-slate-500 hover:text-slate-700"}`}>
+      {label} <span className="ml-1 text-xs bg-slate-100 text-slate-600 rounded-full px-2 py-0.5">{count}</span>
+    </button>
+  );
+
+  const levelHeading = (level, count) => count > 0 && (
+    <h4 className={`text-xs font-bold uppercase tracking-wider mt-4 mb-2
+      ${level === "critical" ? "text-red-600" : "text-amber-600"}`}>
+      {level === "critical" ? `Critical (${ALERT_CRITICAL}% or more)` : `Warning (${ALERT_WARNING}% to ${ALERT_CRITICAL}%)`}
+      {" — "}{count}
+    </h4>
+  );
+
+  const hostRow = h => (
+    <div key={h.server_id}
+         className={`rounded-lg border px-4 py-3 mb-2
+           ${h.status === "critical" ? "border-red-200 bg-red-50/50" : "border-amber-200 bg-amber-50/50"}`}>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <p className="font-semibold text-slate-800 text-sm">{h.display_name}</p>
+          <p className="text-xs text-slate-500 font-mono">{h.ip_address}</p>
+        </div>
+        <div className="flex items-center gap-2 text-xs text-slate-500">
+          <HypervisorBadge type={h.hypervisor_type} />
+          <span>{h.cpu_cores} CPUs</span>
+          <span>{h.vm_count} VMs</span>
+          <StatusDot status={h.status} />
+        </div>
+      </div>
+      <p className="text-xs text-slate-600 mt-1">
+        Reason: <b>{alertReason(h, h.status) || "high utilisation"}</b>
+      </p>
+      {h.error && <p className="text-xs text-red-600 mt-1">Error: {h.error}</p>}
+      <div className="flex gap-4 flex-wrap mt-2">
+        <AlertMetric label="CPU"     value={h.cpu_usage_pct} />
+        <AlertMetric label="RAM"     value={h.ram_usage_pct}
+                     detail={`${h.ram_used_gb} / ${h.ram_total_gb} GB`} />
+        <AlertMetric label="Storage" value={h.storage_usage_pct}
+                     detail={`${h.storage_used_tb} / ${h.storage_total_tb} TB`} />
+      </div>
+    </div>
+  );
+
+  const vmRow = v => (
+    <div key={`${v.host_server_id}|${v.vm_id}`}
+         className={`rounded-lg border px-4 py-3 mb-2
+           ${v.status === "critical" ? "border-red-200 bg-red-50/50" : "border-amber-200 bg-amber-50/50"}`}>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <p className="font-semibold text-slate-800 text-sm">{v.vm_name}</p>
+          <p className="text-xs text-slate-500">
+            <span className="font-mono">{v.ip_address || "no IP"}</span>
+            {" · on "}{hostName(v.host_server_id)}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 text-xs text-slate-500">
+          <HypervisorBadge type={v.hypervisor_type} />
+          <PowerBadge state={v.power_state} />
+          <StatusDot status={v.status} />
+        </div>
+      </div>
+      <p className="text-xs text-slate-600 mt-1">
+        Reason: <b>{alertReason(v, v.status) || "high utilisation"}</b>
+        <span className="text-slate-400"> · Owner: {v.owner_name} · Purpose: {v.purpose}</span>
+      </p>
+      <div className="flex gap-4 flex-wrap mt-2">
+        <AlertMetric label="CPU" value={v.cpu_usage_pct} detail={`${v.cpu_cores} vCPUs`} />
+        <AlertMetric label="RAM" value={v.ram_usage_pct}
+                     detail={`${v.ram_used_gb} / ${v.ram_total_gb} GB`} />
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"
+         onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[85vh] flex flex-col"
+           onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 pt-5">
+          <h3 className="text-lg font-bold text-slate-800">Alert details</h3>
+          <button onClick={onClose}
+                  className="text-slate-400 hover:text-slate-700 text-xl leading-none"
+                  title="Close (Esc)">✕</button>
+        </div>
+        <div className="flex gap-2 px-6 mt-2 border-b border-slate-200">
+          {tabBtn("hosts", "Host alerts", hostCount)}
+          {tabBtn("vms",   "VM alerts",   vmCount)}
+        </div>
+        <div className="overflow-y-auto px-6 pb-6">
+          {tab === "hosts" ? (
+            hostCount === 0
+              ? <p className="text-sm text-slate-400 py-8 text-center">No host alerts.</p>
+              : <>
+                  {levelHeading("critical", hostCrit.length)}{hostCrit.map(hostRow)}
+                  {levelHeading("warning",  hostWarn.length)}{hostWarn.map(hostRow)}
+                </>
+          ) : (
+            vmCount === 0
+              ? <p className="text-sm text-slate-400 py-8 text-center">No VM alerts.</p>
+              : <>
+                  {levelHeading("critical", vmCrit.length)}{vmCrit.map(vmRow)}
+                  {levelHeading("warning",  vmWarn.length)}{vmWarn.map(vmRow)}
+                </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 
 // ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 // Drive breakdown row
@@ -1070,6 +1231,8 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
   const [snapCounts,  setSnapCounts]  = useState({});
   const [snapSizes,   setSnapSizes]   = useState({});
   const [snapScanned, setSnapScanned] = useState([]);
+  // Alerts details panel: null = closed, else "hosts" | "vms"
+  const [alertsTab,   setAlertsTab]   = useState(null);
   const handleSnapCount = useCallback((vmId, count, sizeBytes) => {
     setSnapCounts(c => ({ ...c, [vmId]: count }));
     setSnapSizes(s => ({ ...s, [vmId]: sizeBytes || 0 }));
@@ -1507,6 +1670,18 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
             {servers.some(s => s.status === "critical" && s.error)
               && " Connection errors detected — check credentials."}
           </div>
+          <div className="flex gap-2 shrink-0">
+            <button onClick={() => setAlertsTab("hosts")}
+                    className="px-3 py-1.5 rounded-lg border border-red-300 bg-white text-red-700
+                      text-xs font-semibold hover:bg-red-100 transition-colors">
+              Host alerts ({criticalCount + warningCount})
+            </button>
+            <button onClick={() => setAlertsTab("vms")}
+                    className="px-3 py-1.5 rounded-lg border border-red-300 bg-white text-red-700
+                      text-xs font-semibold hover:bg-red-100 transition-colors">
+              VM alerts ({criticalVMs.length + warningVMs.length})
+            </button>
+          </div>
         </div>
       )}
 
@@ -1520,8 +1695,21 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
         <StatCard label="Alerts"
                   value={alertCritical + alertWarning}
                   sub={`${alertCritical} critical · ${alertWarning} warning (hosts + VMs)`}
-                  accent={alertCritical > 0 ? "text-red-600" : "text-amber-500"} />
+                  accent={alertCritical > 0 ? "text-red-600" : "text-amber-500"}
+                  onClick={() => setAlertsTab(
+                    criticalCount + warningCount > 0 || criticalVMs.length + warningVMs.length === 0
+                      ? "hosts" : "vms")} />
       </div>
+
+      {alertsTab && (
+        <AlertsPanel
+          servers={servers}
+          vms={vms}
+          tab={alertsTab}
+          onTab={setAlertsTab}
+          onClose={() => setAlertsTab(null)}
+        />
+      )}
 
       {/* ── Req 2 — Level 1 + Level 2 Composable Filter Dropdowns ─────────── */}
       <section className="bg-white rounded-xl border border-slate-200 shadow-sm px-5 py-4">
