@@ -395,6 +395,35 @@ def _status_from_cpu(cpu: float) -> str:
     return "online"
 
 
+# ── Alert thresholds (hosts AND VMs) ─────────────────────────────────────────
+# The worst of CPU / RAM / storage decides the status:
+#   >= 95 %  → critical      >= 85 %  → warning      below 85 %  → online
+ALERT_CRITICAL_PCT = 95.0
+ALERT_WARNING_PCT  = 85.0
+
+
+def _usage_status(*pcts) -> str:
+    """Status from the highest utilisation % among the given values."""
+    worst = max((float(p or 0) for p in pcts), default=0.0)
+    if worst >= ALERT_CRITICAL_PCT: return "critical"
+    if worst >= ALERT_WARNING_PCT:  return "warning"
+    return "online"
+
+
+def _apply_usage_status(metrics: dict) -> dict:
+    """
+    Re-derive a host's status from CPU + RAM + storage.
+    Hosts that failed to poll (error set) stay 'critical' as the adapter decided.
+    """
+    if metrics and not metrics.get("error"):
+        metrics["status"] = _usage_status(
+            metrics.get("cpu_usage_pct"),
+            metrics.get("ram_usage_pct"),
+            metrics.get("storage_usage_pct"),
+        )
+    return metrics
+
+
 def _row_to_response(row: models.ServerConfig) -> ServerConfigResponse:
     return ServerConfigResponse(
         server_id=row.server_id,
@@ -451,7 +480,7 @@ def _fetch_live_metrics(row: models.ServerConfig) -> dict:
 
     try:
         adapter = get_adapter(row, username, password)
-        return adapter.get_server_status()
+        return _apply_usage_status(adapter.get_server_status())
     except ValueError as exc:
         # Unknown hypervisor_type — get_adapter raises ValueError
         from hypervisors.base import HypervisorInterface
@@ -827,15 +856,11 @@ async def get_vms(
             srv_suffix = host_server_id[-6:] if len(host_server_id) >= 6 else host_server_id
             vm_id     = f"{short}-{srv_suffix}-{safe_name}"
 
-            # Determine status from power state + CPU
+            # Determine status from power state + CPU / RAM utilisation
             if power == "stopped":
                 _status = "stopped"
-            elif cpu_pct >= 90:
-                _status = "critical"
-            elif cpu_pct >= 70:
-                _status = "warning"
             else:
-                _status = "online"
+                _status = _usage_status(cpu_pct, ram_pct)
 
             out.append(VMRecord(
                 vm_id=vm_id,
@@ -1580,9 +1605,7 @@ async def send_full_report(
             cpu_pct    = float(vm.get("cpu_pct", 0))
             power      = vm.get("power_state", "unknown")
             status     = ("stopped" if power == "stopped"
-                          else "critical" if cpu_pct >= 90
-                          else "warning" if cpu_pct >= 70
-                          else "online")
+                          else _usage_status(cpu_pct, ram_pct))
             vms_data.append({
                 "vm_name":       vm["vm_name"],
                 "ip_address":    vm.get("ip_address", ""),

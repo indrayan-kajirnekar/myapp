@@ -84,9 +84,23 @@ function applyVMFilters(vms, { hypervisorType, serverId, serverIds, powerState, 
 // Tiny primitives
 // ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
+// Alert thresholds — keep in sync with ALERT_*_PCT in backend/main.py
+const ALERT_CRITICAL = 95;
+const ALERT_WARNING  = 85;
+
+// "CPU 96%, RAM 97%" — which metrics pushed a host / VM into the given level
+function alertReason(item, level) {
+  if (item.error) return "unreachable";
+  const min = level === "critical" ? ALERT_CRITICAL : ALERT_WARNING;
+  return [["CPU", item.cpu_usage_pct], ["RAM", item.ram_usage_pct], ["Storage", item.storage_usage_pct]]
+    .filter(([, v]) => v != null && v >= min)
+    .map(([n, v]) => `${n} ${v}%`)
+    .join(", ");
+}
+
 function GaugeBar({ value }) {
   const pct    = Math.min(100, Math.max(0, Math.round(value)));
-  const colour = pct >= 90 ? "bg-red-500" : pct >= 70 ? "bg-amber-400" : "bg-emerald-500";
+  const colour = pct >= ALERT_CRITICAL ? "bg-red-500" : pct >= ALERT_WARNING ? "bg-amber-400" : "bg-emerald-500";
   return (
     <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
       <div className={`h-2 rounded-full transition-all duration-700 ${colour}`}
@@ -277,6 +291,8 @@ function ServerCard({ server, selected, onSelect, isFilterActive, onCardClick })
       className={`bg-white rounded-xl shadow-sm border p-5 flex flex-col gap-3 cursor-pointer
         ${server.status === "critical"
           ? "border-red-300"
+          : server.status === "warning" && !isFilterActive && !selected
+            ? "border-amber-300"
           : isFilterActive
             ? "border-blue-500 ring-2 ring-blue-400 bg-blue-50"
             : selected
@@ -840,7 +856,11 @@ function VMTable({ vms, filters, onFilters, onVmsUpdated, servers = [],
               return (
                 <React.Fragment key={`${vm.host_server_id}|${vm.vm_id}|${vm.vm_name}`}>
                 <tr
-                    className={`transition-colors ${dirty ? "bg-amber-50" : "hover:bg-slate-50"}`}>
+                    className={`transition-colors ${dirty
+                      ? "bg-amber-50"
+                      : vm.status === "critical" ? "bg-red-50 hover:bg-red-100"
+                      : vm.status === "warning"  ? "bg-amber-50/60 hover:bg-amber-50"
+                      : "hover:bg-slate-50"}`}>
                   <td className="px-3 py-2 text-sm font-medium text-slate-800 whitespace-nowrap">
                     {vm.vm_name}
                   </td>
@@ -1250,6 +1270,11 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
                           .filter(v => v.power_state === "running").length;
   const criticalCount = servers.filter(h => h.status === "critical").length;
   const warningCount  = servers.filter(h => h.status === "warning").length;
+  // VM alerts (all VMs, not just the filtered table)
+  const criticalVMs   = vms.filter(v => v.status === "critical");
+  const warningVMs    = vms.filter(v => v.status === "warning");
+  const alertCritical = criticalCount + criticalVMs.length;
+  const alertWarning  = warningCount  + warningVMs.length;
   const avgCpu        = servers.length
     ? (servers.reduce((s, h) => s + h.cpu_usage_pct, 0) / servers.length).toFixed(1)
     : 0;
@@ -1455,7 +1480,7 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
       )}
 
       {/* ΓöÇΓöÇ Critical alert banner ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
-      {criticalCount > 0 && (
+      {alertCritical > 0 && (
         <div className="flex items-center gap-3 bg-red-50 border border-red-300 rounded-xl px-5 py-3 text-sm text-red-800">
           <svg className="w-5 h-5 shrink-0 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round"
@@ -1463,9 +1488,22 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
           </svg>
           <div className="flex-1">
             <span className="font-bold">Critical alert</span>
-            {" — "}
-            {servers.filter(s => s.status === "critical").map(s => s.display_name).join(", ")}
-            {" "}{criticalCount === 1 ? "is" : "are"} at critical CPU utilisation (&gt;90%).
+            {" — utilisation at or above "}{ALERT_CRITICAL}{"%. "}
+            {criticalCount > 0 && (
+              <span>
+                <b>Hosts:</b>{" "}
+                {servers.filter(s => s.status === "critical")
+                  .map(s => `${s.display_name} (${alertReason(s, "critical")})`).join(", ")}.{" "}
+              </span>
+            )}
+            {criticalVMs.length > 0 && (
+              <span>
+                <b>VMs:</b>{" "}
+                {criticalVMs.slice(0, 5)
+                  .map(v => `${v.vm_name} (${alertReason(v, "critical")})`).join(", ")}
+                {criticalVMs.length > 5 ? ` and ${criticalVMs.length - 5} more` : ""}.
+              </span>
+            )}
             {servers.some(s => s.status === "critical" && s.error)
               && " Connection errors detected — check credentials."}
           </div>
@@ -1480,9 +1518,9 @@ export default function Dashboard({ onGoToServers, onGoToEmail }) {
         <StatCard label="Avg CPU"      value={`${avgCpu}%`}
                   sub="live across all hosts" accent="text-blue-600" />
         <StatCard label="Alerts"
-                  value={criticalCount + warningCount}
-                  sub={`${criticalCount} critical · ${warningCount} warning`}
-                  accent={criticalCount > 0 ? "text-red-600" : "text-amber-500"} />
+                  value={alertCritical + alertWarning}
+                  sub={`${alertCritical} critical · ${alertWarning} warning (hosts + VMs)`}
+                  accent={alertCritical > 0 ? "text-red-600" : "text-amber-500"} />
       </div>
 
       {/* ── Req 2 — Level 1 + Level 2 Composable Filter Dropdowns ─────────── */}
