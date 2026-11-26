@@ -103,10 +103,30 @@ app.add_middleware(
 # Startup — create tables
 # ──────────────────────────────────────────────────────────────────────────────
 
+def _migrate_email_schedule(sync_conn) -> None:
+    """
+    create_all() never alters existing tables, so add any email_schedule
+    columns introduced after the first release (idempotent).
+    """
+    from sqlalchemy import inspect, text
+    existing = {c["name"] for c in inspect(sync_conn).get_columns("email_schedule")}
+    wanted = {
+        "day_of_month":  "INTEGER NOT NULL DEFAULT 1",
+        "cron_expr":     "VARCHAR(128) NOT NULL DEFAULT ''",
+        "timezone":      "VARCHAR(64) NOT NULL DEFAULT 'UTC'",
+        "report_format": "VARCHAR(8) NOT NULL DEFAULT 'both'",
+        "last_status":   "TEXT",
+    }
+    for name, ddl in wanted.items():
+        if name not in existing:
+            sync_conn.execute(text(f"ALTER TABLE email_schedule ADD COLUMN {name} {ddl}"))
+
+
 @app.on_event("startup")
 async def startup_event():
     async with engine.begin() as conn:
         await conn.run_sync(models.Base.metadata.create_all)
+        await conn.run_sync(_migrate_email_schedule)
 
     # ── Seed built-in groups + root user (idempotent) ────────────────────────
     await _auth.ensure_defaults()
@@ -1891,12 +1911,63 @@ async def download_html_report(db: AsyncSession = Depends(get_db)):
 # Email Schedule CRUD + helper
 # ──────────────────────────────────────────────────────────────────────────────
 
+_SCHEDULE_TYPES  = ("disabled", "daily", "weekly", "monthly", "custom")
+_REPORT_FORMATS  = ("html", "csv", "both")
+
+
 class EmailSchedulePayload(BaseModel):
-    schedule_type: str  = "disabled"  # "daily" | "weekly" | "disabled"
+    # "daily" | "weekly" | "monthly" | "custom" | "disabled"
+    schedule_type: str  = "disabled"
     hour:          int  = 8
     minute:        int  = 0
-    day_of_week:   int  = 0           # 0=Mon … 6=Sun
+    day_of_week:   int  = 0           # 0=Mon … 6=Sun        (weekly)
+    day_of_month:  int  = 1           # 1-28, 0 = last day   (monthly)
+    cron_expr:     str  = ""          # 5-field cron         (custom)
+    timezone:      str  = "UTC"       # IANA name, e.g. "Asia/Kolkata"
+    report_format: str  = "both"      # "html" | "csv" | "both"
     enabled:       bool = True
+
+    @field_validator("schedule_type")
+    @classmethod
+    def _v_type(cls, v: str) -> str:
+        if v not in _SCHEDULE_TYPES:
+            raise ValueError(f"schedule_type must be one of {_SCHEDULE_TYPES}")
+        return v
+
+    @field_validator("hour")
+    @classmethod
+    def _v_hour(cls, v: int) -> int:
+        if not 0 <= v <= 23:
+            raise ValueError("hour must be 0-23")
+        return v
+
+    @field_validator("minute")
+    @classmethod
+    def _v_minute(cls, v: int) -> int:
+        if not 0 <= v <= 59:
+            raise ValueError("minute must be 0-59")
+        return v
+
+    @field_validator("day_of_week")
+    @classmethod
+    def _v_dow(cls, v: int) -> int:
+        if not 0 <= v <= 6:
+            raise ValueError("day_of_week must be 0 (Mon) to 6 (Sun)")
+        return v
+
+    @field_validator("day_of_month")
+    @classmethod
+    def _v_dom(cls, v: int) -> int:
+        if not 0 <= v <= 28:
+            raise ValueError("day_of_month must be 1-28, or 0 for the last day")
+        return v
+
+    @field_validator("report_format")
+    @classmethod
+    def _v_fmt(cls, v: str) -> str:
+        if v not in _REPORT_FORMATS:
+            raise ValueError(f"report_format must be one of {_REPORT_FORMATS}")
+        return v
 
 
 class EmailScheduleResponse(BaseModel):
@@ -1904,9 +1975,29 @@ class EmailScheduleResponse(BaseModel):
     hour:          int
     minute:        int
     day_of_week:   int
+    day_of_month:  int = 1
+    cron_expr:     str = ""
+    timezone:      str = "UTC"
+    report_format: str = "both"
     enabled:       bool
     next_run:      Optional[str]
     last_sent_at:  Optional[str]
+    last_status:   Optional[str] = None
+
+
+def _schedule_to_response(row: models.EmailSchedule) -> EmailScheduleResponse:
+    return EmailScheduleResponse(
+        schedule_type=row.schedule_type,
+        hour=row.hour, minute=row.minute, day_of_week=row.day_of_week,
+        day_of_month=row.day_of_month if row.day_of_month is not None else 1,
+        cron_expr=row.cron_expr or "",
+        timezone=row.timezone or "UTC",
+        report_format=row.report_format or "both",
+        enabled=row.enabled,
+        next_run=report_scheduler.get_next_run(),
+        last_sent_at=row.last_sent_at.isoformat() if row.last_sent_at else None,
+        last_status=row.last_status,
+    )
 
 
 def _register_schedule(row: models.EmailSchedule) -> None:
@@ -1915,23 +2006,52 @@ def _register_schedule(row: models.EmailSchedule) -> None:
         report_scheduler.remove_job()
         return
 
+    report_format = row.report_format if row.report_format in _REPORT_FORMATS else "both"
+
+    async def _record(status: str, ok: bool) -> None:
+        """Persist the outcome of a scheduled run + write an audit event."""
+        from datetime import datetime, timezone as tz
+        async with SessionLocal() as db:
+            sched_r = await db.execute(
+                select(models.EmailSchedule).where(models.EmailSchedule.id == 1))
+            sched = sched_r.scalars().first()
+            if sched:
+                sched.last_status = status[:500]
+                if ok:
+                    sched.last_sent_at = datetime.now(tz.utc).replace(tzinfo=None)
+            await log_event(db, actor="scheduler", category="email",
+                            action="email.schedule.run" if ok else "email.schedule.fail",
+                            detail=status[:500],
+                            severity="info" if ok else "error")
+            await db.commit()
+
     async def _job():
         """Async job: build + send the full report."""
+        try:
+            await _run_job()
+        except Exception as exc:   # never let a failure vanish silently
+            import logging
+            logging.getLogger(__name__).exception("Scheduled report failed")
+            await _record(f"error: {exc}", ok=False)
+
+    async def _run_job():
         from mailer import send_report
         async with SessionLocal() as db:
             cfg_r = await db.execute(
                 select(models.EmailConfig).where(models.EmailConfig.id == 1))
             cfg = cfg_r.scalars().first()
             if not cfg or not cfg.smtp_host:
-                return
+                raise RuntimeError("SMTP is not configured.")
             recipients = [r.strip() for r in (cfg.recipients or "").split(",") if r.strip()]
             if not recipients:
-                return
+                raise RuntimeError("No recipients configured.")
             password = decrypt(cfg.smtp_password_enc) if cfg.smtp_password_enc else ""
 
             server_rows_r = await db.execute(
                 select(models.ServerConfig).where(models.ServerConfig.enabled == True))
             server_rows = server_rows_r.scalars().all()
+            if not server_rows:
+                raise RuntimeError("No enabled servers to report on.")
 
             meta_r = await db.execute(select(models.VMMetadata))
             static_map = {m.vm_name: m for m in meta_r.scalars().all()}
@@ -1988,22 +2108,25 @@ def _register_schedule(row: models.EmailSchedule) -> None:
                 smtp_mode=cfg.smtp_mode or "starttls",
                 from_address=cfg.from_address or cfg.smtp_user,
                 recipients=recipients, servers=servers_data, vms=vms_data,
+                report_format=report_format,
             ),
         )
-        # Update last_sent_at
-        from datetime import datetime, timezone as tz
-        async with SessionLocal() as db:
-            sched_r = await db.execute(
-                select(models.EmailSchedule).where(models.EmailSchedule.id == 1))
-            sched = sched_r.scalars().first()
-            if sched:
-                sched.last_sent_at = datetime.now(tz.utc).replace(tzinfo=None)
-                await db.commit()
+        await _record(
+            f"ok: sent to {len(recipients)} recipient(s), "
+            f"{len(servers_data)} host(s), {len(vms_data)} VM(s) ({report_format})",
+            ok=True)
 
+    tz_name = row.timezone or "UTC"
     if row.schedule_type == "daily":
-        report_scheduler.schedule_daily(row.hour, row.minute, _job)
+        report_scheduler.schedule_daily(row.hour, row.minute, _job, tz_name)
     elif row.schedule_type == "weekly":
-        report_scheduler.schedule_weekly(row.day_of_week, row.hour, row.minute, _job)
+        report_scheduler.schedule_weekly(row.day_of_week, row.hour, row.minute,
+                                         _job, tz_name)
+    elif row.schedule_type == "monthly":
+        report_scheduler.schedule_monthly(row.day_of_month, row.hour, row.minute,
+                                          _job, tz_name)
+    elif row.schedule_type == "custom":
+        report_scheduler.schedule_custom(row.cron_expr, _job, tz_name)
 
 
 @app.get("/api/email/schedule", response_model=EmailScheduleResponse,
@@ -2018,13 +2141,7 @@ async def get_schedule(db: AsyncSession = Depends(get_db)):
             schedule_type="disabled", hour=8, minute=0,
             day_of_week=0, enabled=False, next_run=None, last_sent_at=None,
         )
-    return EmailScheduleResponse(
-        schedule_type=row.schedule_type,
-        hour=row.hour, minute=row.minute, day_of_week=row.day_of_week,
-        enabled=row.enabled,
-        next_run=report_scheduler.get_next_run(),
-        last_sent_at=row.last_sent_at.isoformat() if row.last_sent_at else None,
-    )
+    return _schedule_to_response(row)
 
 
 @app.put("/api/email/schedule", response_model=EmailScheduleResponse,
@@ -2033,33 +2150,32 @@ async def get_schedule(db: AsyncSession = Depends(get_db)):
 async def save_schedule(payload: EmailSchedulePayload,
                         db: AsyncSession = Depends(get_db)):
     """Create or update the report schedule and (re)register the APScheduler job."""
+    try:
+        report_scheduler.validate_timezone(payload.timezone)
+        if payload.schedule_type == "custom":
+            report_scheduler.validate_cron(payload.cron_expr.strip(), payload.timezone)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+
     result = await db.execute(
         select(models.EmailSchedule).where(models.EmailSchedule.id == 1))
     row = result.scalars().first()
-    if row:
-        row.schedule_type = payload.schedule_type
-        row.hour          = payload.hour
-        row.minute        = payload.minute
-        row.day_of_week   = payload.day_of_week
-        row.enabled       = payload.enabled
-    else:
-        row = models.EmailSchedule(
-            id=1,
-            schedule_type=payload.schedule_type,
-            hour=payload.hour, minute=payload.minute,
-            day_of_week=payload.day_of_week, enabled=payload.enabled,
-        )
+    if not row:
+        row = models.EmailSchedule(id=1)
         db.add(row)
+    row.schedule_type = payload.schedule_type
+    row.hour          = payload.hour
+    row.minute        = payload.minute
+    row.day_of_week   = payload.day_of_week
+    row.day_of_month  = payload.day_of_month
+    row.cron_expr     = payload.cron_expr.strip()
+    row.timezone      = payload.timezone
+    row.report_format = payload.report_format
+    row.enabled       = payload.enabled
     await db.commit()
     await db.refresh(row)
     _register_schedule(row)
-    return EmailScheduleResponse(
-        schedule_type=row.schedule_type,
-        hour=row.hour, minute=row.minute, day_of_week=row.day_of_week,
-        enabled=row.enabled,
-        next_run=report_scheduler.get_next_run(),
-        last_sent_at=row.last_sent_at.isoformat() if row.last_sent_at else None,
-    )
+    return _schedule_to_response(row)
 
 
 @app.delete("/api/email/schedule", status_code=204, tags=["Email Reports"],

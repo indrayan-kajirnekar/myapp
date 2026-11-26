@@ -3,7 +3,7 @@
  *
  * Three tabs:
  *  1. SMTP Settings  — host, port, credentials, recipients, test button
- *  2. Schedule       — daily or weekly recurring delivery with next-run display
+ *  2. Schedule       — daily / weekly / monthly / custom-cron delivery with next-run display
  *  3. Send Now       — immediate delivery + download CSV links
  */
 
@@ -268,10 +268,37 @@ function SmtpTab({ onBanner }) {
 
 // ── Tab 2: Schedule ───────────────────────────────────────────────────────────
 
+const FREQUENCIES = ["disabled", "daily", "weekly", "monthly", "custom"];
+
+const CRON_PRESETS = [
+  { label: "Every 6 hours",        expr: "0 */6 * * *"  },
+  { label: "Weekdays 08:00",       expr: "0 8 * * 1-5"  },
+  { label: "1st & 15th, 09:00",    expr: "0 9 1,15 * *" },
+  { label: "Every Sunday 23:30",   expr: "30 23 * * 0"  },
+];
+
+const TIMEZONES = (() => {
+  try { return ["UTC", ...Intl.supportedValuesOf("timeZone").filter(z => z !== "UTC")]; }
+  catch { return ["UTC"]; }
+})();
+const BROWSER_TZ = (() => {
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; }
+  catch { return "UTC"; }
+})();
+
+const ordinal = n => {
+  const s = ["th", "st", "nd", "rd"], v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+};
+
 function ScheduleTab({ onBanner }) {
-  const [form, setForm]     = useState({ schedule_type: "disabled", hour: 8, minute: 0, day_of_week: 0, enabled: true });
+  const [form, setForm]     = useState({
+    schedule_type: "disabled", hour: 8, minute: 0, day_of_week: 0,
+    day_of_month: 1, cron_expr: "", timezone: "UTC", report_format: "both", enabled: true,
+  });
   const [nextRun, setNext]  = useState(null);
   const [lastSent, setLast] = useState(null);
+  const [lastStatus, setLastStatus] = useState(null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDel]  = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -279,10 +306,14 @@ function ScheduleTab({ onBanner }) {
   const load = useCallback(() => {
     axios.get(`${API}/api/email/schedule`).then(r => {
       const d = r.data;
-      setForm({ schedule_type: d.schedule_type||"disabled", hour: d.hour||8,
-                minute: d.minute||0, day_of_week: d.day_of_week||0, enabled: d.enabled });
+      setForm({ schedule_type: d.schedule_type||"disabled", hour: d.hour ?? 8,
+                minute: d.minute ?? 0, day_of_week: d.day_of_week ?? 0,
+                day_of_month: d.day_of_month ?? 1, cron_expr: d.cron_expr || "",
+                timezone: d.timezone || "UTC", report_format: d.report_format || "both",
+                enabled: d.enabled });
       setNext(d.next_run || null);
       setLast(d.last_sent_at || null);
+      setLastStatus(d.last_status || null);
     }).catch(() => {});
   }, []);
 
@@ -291,11 +322,13 @@ function ScheduleTab({ onBanner }) {
   const save = async () => {
     setSaving(true);
     try {
-      const r = await axios.put(`${API}/api/email/schedule`, form);
+      const payload = { ...form, enabled: form.schedule_type !== "disabled" };
+      const r = await axios.put(`${API}/api/email/schedule`, payload);
       setNext(r.data.next_run || null);
       onBanner(`Schedule saved. ${r.data.next_run ? `Next run: ${new Date(r.data.next_run).toLocaleString()}` : ""}`, "ok");
     } catch (e) {
-      onBanner(e.response?.data?.detail || "Save failed.", "error");
+      const d = e.response?.data?.detail;
+      onBanner(Array.isArray(d) ? d.map(x => x.msg).join("; ") : (d || "Save failed."), "error");
     } finally { setSaving(false); }
   };
 
@@ -328,16 +361,27 @@ function ScheduleTab({ onBanner }) {
         <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 flex flex-col gap-0.5 min-w-[180px]">
           <span className="text-xs text-slate-400 uppercase tracking-wider">Last sent</span>
           <span className="text-sm font-semibold text-slate-700">
-            {lastSent ? new Date(lastSent).toLocaleString() : <span className="text-slate-400">Never</span>}
+            {lastSent
+              // server stores naive UTC — append Z so the browser converts to local time
+              ? new Date(/[zZ]|[+-]\d\d:\d\d$/.test(lastSent) ? lastSent : lastSent + "Z").toLocaleString()
+              : <span className="text-slate-400">Never</span>}
           </span>
         </div>
+        {lastStatus && (
+          <div className={`border rounded-xl px-4 py-3 flex flex-col gap-0.5 min-w-[180px] flex-1
+            ${lastStatus.startsWith("error") ? "bg-red-50 border-red-200" : "bg-slate-50 border-slate-200"}`}>
+            <span className="text-xs text-slate-400 uppercase tracking-wider">Last run result</span>
+            <span className={`text-sm font-semibold break-words
+              ${lastStatus.startsWith("error") ? "text-red-700" : "text-slate-700"}`}>{lastStatus}</span>
+          </div>
+        )}
       </div>
 
       {/* Schedule type */}
       <div>
         <Label>Frequency</Label>
         <div className="flex gap-3 flex-wrap">
-          {["disabled", "daily", "weekly"].map(t => (
+          {FREQUENCIES.map(t => (
             <button key={t} type="button"
                     onClick={() => set("schedule_type", t)}
                     className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors capitalize
@@ -352,22 +396,70 @@ function ScheduleTab({ onBanner }) {
 
       {form.schedule_type !== "disabled" && (
         <>
-          {/* Time */}
-          <div className="grid grid-cols-2 gap-4 max-w-xs">
-            <div>
-              <Label>Hour (UTC, 0–23)</Label>
-              <Input type="number" min={0} max={23} value={form.hour}
-                     onChange={e => set("hour", Math.min(23, Math.max(0, parseInt(e.target.value)||0)))} />
+          {/* Time (not used by custom cron) */}
+          {form.schedule_type !== "custom" && (
+            <div className="grid grid-cols-2 gap-4 max-w-xs">
+              <div>
+                <Label>Hour (0–23)</Label>
+                <Input type="number" min={0} max={23} value={form.hour}
+                       onChange={e => set("hour", Math.min(23, Math.max(0, parseInt(e.target.value)||0)))} />
+              </div>
+              <div>
+                <Label>Minute (0–59)</Label>
+                <Input type="number" min={0} max={59} value={form.minute}
+                       onChange={e => set("minute", Math.min(59, Math.max(0, parseInt(e.target.value)||0)))} />
+              </div>
             </div>
-            <div>
-              <Label>Minute (0–59)</Label>
-              <Input type="number" min={0} max={59} value={form.minute}
-                     onChange={e => set("minute", Math.min(59, Math.max(0, parseInt(e.target.value)||0)))} />
-            </div>
+          )}
+
+          {/* Timezone */}
+          <div className="max-w-xs">
+            <Label hint="(IANA name)">Timezone</Label>
+            <Input list="tz-list" value={form.timezone}
+                   onChange={e => set("timezone", e.target.value)} />
+            <datalist id="tz-list">
+              {TIMEZONES.map(z => <option key={z} value={z} />)}
+            </datalist>
+            {BROWSER_TZ !== form.timezone && (
+              <button type="button" onClick={() => set("timezone", BROWSER_TZ)}
+                      className="text-xs text-blue-600 hover:underline mt-1">
+                Use my timezone ({BROWSER_TZ})
+              </button>
+            )}
           </div>
-          <p className="text-xs text-slate-400 -mt-3">
-            Time is in UTC. Preview: <strong className="text-slate-600">{pad(form.hour)}:{pad(form.minute)} UTC</strong>
-          </p>
+
+          {/* Custom cron */}
+          {form.schedule_type === "custom" && (
+            <div>
+              <Label hint="(minute hour day-of-month month day-of-week)">Cron expression</Label>
+              <Input className="font-mono max-w-sm" placeholder="0 8 * * 1-5"
+                     value={form.cron_expr}
+                     onChange={e => set("cron_expr", e.target.value)} />
+              <div className="flex gap-2 flex-wrap mt-2">
+                {CRON_PRESETS.map(p => (
+                  <button key={p.expr} type="button" onClick={() => set("cron_expr", p.expr)}
+                          className="px-2.5 py-1 rounded-lg text-xs border border-slate-200 text-slate-600 hover:border-slate-300">
+                    {p.label} <span className="font-mono text-slate-400">({p.expr})</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Day of month (monthly only) */}
+          {form.schedule_type === "monthly" && (
+            <div className="max-w-xs">
+              <Label>Day of Month</Label>
+              <select value={form.day_of_month}
+                      onChange={e => set("day_of_month", parseInt(e.target.value))}
+                      className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400">
+                {Array.from({ length: 28 }, (_, i) => i + 1).map(d => (
+                  <option key={d} value={d}>{ordinal(d)}</option>
+                ))}
+                <option value={0}>Last day of month</option>
+              </select>
+            </div>
+          )}
 
           {/* Day of week (weekly only) */}
           {form.schedule_type === "weekly" && (
@@ -388,11 +480,36 @@ function ScheduleTab({ onBanner }) {
             </div>
           )}
 
+          {/* Report format */}
+          <div>
+            <Label>Report Format</Label>
+            <div className="flex gap-3 flex-wrap">
+              {REPORT_FORMATS.map(f => (
+                <button key={f.value} type="button" onClick={() => set("report_format", f.value)}
+                        title={f.desc}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors
+                          ${form.report_format === f.value
+                            ? "border-blue-500 bg-blue-50 text-blue-700"
+                            : "border-slate-200 text-slate-600 hover:border-slate-300"}`}>
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Preview sentence */}
           <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800">
-            {form.schedule_type === "daily"
-              ? `Reports will be sent every day at ${pad(form.hour)}:${pad(form.minute)} UTC.`
-              : `Reports will be sent every ${DAYS[form.day_of_week]} at ${pad(form.hour)}:${pad(form.minute)} UTC.`}
+            {(() => {
+              const at = `${pad(form.hour)}:${pad(form.minute)} ${form.timezone}`;
+              switch (form.schedule_type) {
+                case "daily":   return `Reports will be sent every day at ${at}.`;
+                case "weekly":  return `Reports will be sent every ${DAYS[form.day_of_week]} at ${at}.`;
+                case "monthly": return form.day_of_month === 0
+                  ? `Reports will be sent on the last day of every month at ${at}.`
+                  : `Reports will be sent on the ${ordinal(form.day_of_month)} of every month at ${at}.`;
+                default:        return `Reports will be sent on cron schedule "${form.cron_expr || "…"}" (${form.timezone}).`;
+              }
+            })()}
           </div>
         </>
       )}

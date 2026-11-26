@@ -154,12 +154,17 @@ class EmailSchedule(Base):
 
     Columns
     ───────
-    schedule_type – "daily" | "weekly" | "disabled"
-    hour          – UTC hour (0-23)
-    minute        – UTC minute (0-59)
-    day_of_week   – 0=Mon … 6=Sun (only used when schedule_type="weekly")
+    schedule_type – "daily" | "weekly" | "monthly" | "custom" | "disabled"
+    hour          – hour (0-23) in `timezone`
+    minute        – minute (0-59) in `timezone`
+    day_of_week   – 0=Mon … 6=Sun (schedule_type="weekly")
+    day_of_month  – 1-28, or 0 = last day (schedule_type="monthly")
+    cron_expr     – 5-field cron expression (schedule_type="custom")
+    timezone      – IANA timezone name, default "UTC"
+    report_format – "html" | "csv" | "both"
     enabled       – master on/off switch
-    last_sent_at  – timestamp of last successful delivery (informational)
+    last_sent_at  – timestamp of last successful delivery (UTC, informational)
+    last_status   – "ok" | "error: <message>" for the most recent run
     """
 
     __tablename__ = "email_schedule"
@@ -169,8 +174,13 @@ class EmailSchedule(Base):
     hour          = Column(Integer,  nullable=False, default=8)
     minute        = Column(Integer,  nullable=False, default=0)
     day_of_week   = Column(Integer,  nullable=False, default=0)  # Mon
+    day_of_month  = Column(Integer,  nullable=False, default=1)
+    cron_expr     = Column(String(128), nullable=False, default="")
+    timezone      = Column(String(64),  nullable=False, default="UTC")
+    report_format = Column(String(8),   nullable=False, default="both")
     enabled       = Column(Boolean,  nullable=False, default=False)
     last_sent_at  = Column(DateTime, nullable=True)
+    last_status   = Column(Text,     nullable=True)
 
     def __repr__(self) -> str:
         return f"<EmailSchedule type={self.schedule_type} {self.hour:02d}:{self.minute:02d} UTC>"
